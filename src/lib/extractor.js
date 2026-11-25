@@ -1,0 +1,42 @@
+import { SAMPLE_MESSAGES } from '../data/samples.js'
+
+// Simulates the ILMU AI task-extraction API. In the real version this module
+// would POST the message text to a server route that calls the AI with the
+// API key kept in an environment variable; here the "results" are canned in
+// samples.js and this module just adds realistic latency, failure modes and
+// the privacy rule (the caller discards the raw text after extraction).
+//
+// fault modes (for testing the failure paths):
+//   'none'        - everything works
+//   'timeout'     - one message hangs -> "couldn't read this message"
+//   'badjson'     - one message returns garbage -> retry once, then manual entry
+//   'down'        - whole service unavailable -> fall back to cached demo results
+export async function extractTasks(messages, faultMode = 'none', onProgress = () => {}) {
+  const results = []
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    onProgress(i + 1, messages.length, msg.id)
+    await sleep(120 + Math.random() * 180) // simulated network latency
+    const sample = SAMPLE_MESSAGES.find((s) => s.id === msg.id)
+    if (!sample) {
+      results.push({ messageId: msg.id, tasks: [], error: 'Unknown message' })
+      continue
+    }
+    if (faultMode === 'timeout' && msg.id === 'm3') {
+      results.push({ messageId: msg.id, tasks: [], error: 'The AI took too long to read this message.' })
+      continue
+    }
+    if (faultMode === 'badjson' && msg.id === 'm3') {
+      // retry once, still garbage -> surfaced as an error so the member can add the task by hand
+      await sleep(200)
+      results.push({ messageId: msg.id, tasks: [], error: 'The AI returned an unreadable answer. Retry failed.' })
+      continue
+    }
+    results.push({ messageId: msg.id, tasks: sample.result.map((t) => ({ ...t, source: sample.source, from: sample.from })) })
+  }
+  return results
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
