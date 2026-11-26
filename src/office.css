@@ -206,6 +206,8 @@ body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 62% 0,#
 .office-finding label {display:grid;gap:3px;font-size:12px;color:var(--sub);}.office-finding input {min-width:0;width:100%;padding:5px;border:1px solid #4f6a5b;border-radius:6px;background:#14221c;color:var(--ink);}.office-field-error{color:#ffb5b6;}
 .report-items {padding-left:16px;margin:4px 0;}.report-items li {margin-bottom:5px;}.report-items span {display:block;font-size:12px;color:var(--sub);}
 .office-footer {display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:11px;color:#a3b1a5;font-size:12px;}
+.office-footer,.office-footer-actions {align-items:center;}
+.office-footer-actions {display:flex;gap:12px;flex-wrap:wrap;}
 
 @media(max-width:1100px) { .office-workspace{grid-template-columns:minmax(171px,.75fr) minmax(380px,2fr) minmax(195px,.85fr);gap:8px;} .office-side{padding:9px;} }
 @media(max-width:880px) { .office-workspace{grid-template-columns:1fr 1fr;} .office-center{grid-column:1/-1;grid-row:1;} .office-side{max-height:none;min-height:0;} }

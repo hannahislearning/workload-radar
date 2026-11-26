@@ -76,7 +76,7 @@ function WeeklySummary({ report }) {
 }
 
 export default function App() {
-  const [stored, update] = useAppStore(OFFICE_DEMO_KEY, initialOfficeDemo)
+  const [stored, update, reset] = useAppStore(OFFICE_DEMO_KEY, initialOfficeDemo)
   const state = officeDemoView(stored)
   const [date, setDate] = useState(todayISO)
   const [mode, setMode] = useState('all')
@@ -119,6 +119,16 @@ export default function App() {
   }, [update])
 
   function reviewMessage(id) { setPanel('needs'); setReview(id) }
+  function refreshDemo() {
+    if (!window.confirm('Restore the starting demo? This clears changes you made in the demo.')) return
+    reset()
+    setDate(todayISO())
+    setMode('all')
+    setPanel('needs')
+    setSelection(null)
+    setReview(null)
+    setReportReview(null)
+  }
   function changeUser(id) {
     if (!isDemoViewpoint(id)) return
     if (id === me.id) return
@@ -234,7 +244,11 @@ export default function App() {
       </aside>
     </main>
     <footer className="office-footer"><span>WorkLoad Radar prototype</span>
-      <button type="button" className="office-motion-control" aria-pressed={backgroundPaused}
-        onClick={()=>setBackgroundPaused(value=>!value)}>{backgroundPaused ? 'Resume background' : 'Pause background'}</button></footer>
+      <div className="office-footer-actions">
+        <button type="button" className="office-motion-control" aria-pressed={backgroundPaused}
+          onClick={()=>setBackgroundPaused(value=>!value)}>{backgroundPaused ? 'Resume background' : 'Pause background'}</button>
+        <button type="button" className="office-action secondary" onClick={refreshDemo}>Refresh demo</button>
+      </div>
+    </footer>
   </div></>
 }

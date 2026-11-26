@@ -3,9 +3,10 @@ import { useEffect, useRef } from 'react'
 
 const TAU = Math.PI * 2
 const GRID = 9
+const TAIL_SECONDS = .28
 const glints = ['#24503b', '#367557', '#4c9270']
 
-function draw(ctx, width, height, time, cursor) {
+function draw(ctx, width, height, time, cursor, tail) {
   ctx.clearRect(0, 0, width, height)
   const radius = Math.min(39, width * 0.13)
   const waveHeight = Math.min(98, height * .14)
@@ -41,6 +42,19 @@ function draw(ctx, width, height, time, cursor) {
       }
     }
   }
+  ctx.strokeStyle = '#93e8ae'
+  ctx.lineCap = 'round'
+  for (let i = 1; i < tail.length; i++) {
+    const from = tail[i - 1]
+    const to = tail[i]
+    const strength = Math.max(0, 1 - (time - from.time) / TAIL_SECONDS)
+    ctx.globalAlpha = .56 * strength ** 2 * cursor.weight
+    ctx.lineWidth = 1 + 4 * strength
+    ctx.beginPath()
+    ctx.moveTo(from.x, from.y)
+    ctx.lineTo(to.x, to.y)
+    ctx.stroke()
+  }
   ctx.globalAlpha = 1
 }
 
@@ -53,9 +67,10 @@ export default function RadarBackdrop({ paused }) {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
     const target = { x: 0, y: 0, weight: 0 }
     const cursor = { ...target }
+    const tail = []
     let frame = 0, last = 0, width = 0, height = 0, time = 0
     const canMove = () => !paused && !preference.matches && !document.hidden
-    function paint() { draw(context, width, height, time, cursor) }
+    function paint() { draw(context, width, height, time, cursor, tail) }
     function tick(now) {
       if (!canMove()) return
       if (!last || now - last >= 32) {
@@ -64,6 +79,11 @@ export default function RadarBackdrop({ paused }) {
         cursor.x += (target.x - cursor.x) * .19
         cursor.y += (target.y - cursor.y) * .19
         cursor.weight += (target.weight - cursor.weight) * .17
+        while (tail.length && time - tail[0].time > TAIL_SECONDS) tail.shift()
+        const previous = tail.at(-1)
+        if (target.weight && (!previous || Math.hypot(cursor.x - previous.x, cursor.y - previous.y) >= 3)) {
+          tail.push({ x: cursor.x, y: cursor.y, time })
+        }
         paint()
       }
       frame = requestAnimationFrame(tick)
@@ -72,7 +92,11 @@ export default function RadarBackdrop({ paused }) {
       cancelAnimationFrame(frame)
       last = 0
       if (canMove()) frame = requestAnimationFrame(tick)
-      else paint()
+      else {
+        tail.length = 0
+        target.weight = cursor.weight = 0
+        paint()
+      }
     }
     function resize() {
       width = element.clientWidth
@@ -88,6 +112,7 @@ export default function RadarBackdrop({ paused }) {
       target.x = event.clientX
       target.y = event.clientY
       if (!target.weight && cursor.weight < .03) {
+        tail.length = 0
         cursor.x = target.x
         cursor.y = target.y
       }
