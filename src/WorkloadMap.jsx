@@ -68,7 +68,8 @@ export default function WorkloadMap({state,members,date,mode,onSelect}) {
     {markers.map(({user,summary,x,y,index})=>{
       const pending=state.moveRequests.some(r=>r.state==='pending'&&[r.toUserId,r.fromUserId].includes(user.id)&&state.tasks.some(t=>t.id===r.taskId&&(t.scheduledDate||t.deadline)===date))
       const breakdown = workloadBreakdown(state,user.id,date,mode)
-      return <button type="button" key={user.id} className={'map-pin'+(index===0?' map-pin-primary':'')+(pending?' map-pin-pending':'')}
+      const caught = highlight && summary.key === 'over' && cell(state,user.id,date,'planned').key !== 'over'
+      return <button type="button" key={user.id} className={'map-pin'+(index===0?' map-pin-primary':'')+(pending?' map-pin-pending':'')+(caught?' map-pin-caught':'')}
         style={{left:x+'%',top:y+'%','--pin-color':statusColors[summary.key],'--pin-tint':cellShade(summary),'--workload-fill':summary.key==='leave'?LEAVE_PATTERN:cellShade(summary)}}
         aria-haspopup="dialog" aria-label={user.name+', '+summary.total+' hours, '+summary.label+'. '+breakdown+'. Show day details'} onClick={()=>onSelect({user,date})}>
         <span className="map-breakdown">{breakdown}</span><span className="map-pin-point" aria-hidden="true"/><strong>{user.name}</strong>
@@ -78,7 +79,8 @@ export default function WorkloadMap({state,members,date,mode,onSelect}) {
   </div><div className="workload-mobile" aria-label="Selected day workload">
     {markers.map(({user,summary}) => {
       const breakdown = workloadBreakdown(state,user.id,date,mode)
-      return <button type="button" key={user.id} style={{background:summary.key==='leave'?LEAVE_PATTERN:cellShade(summary)}}
+      const caught = highlight && summary.key === 'over' && cell(state,user.id,date,'planned').key !== 'over'
+      return <button type="button" key={user.id} className={caught?'map-pin-caught':undefined} style={{background:summary.key==='leave'?LEAVE_PATTERN:cellShade(summary)}}
         aria-haspopup="dialog" aria-label={user.name+'. '+summary.label+'. '+breakdown}
         onClick={()=>onSelect({user,date})}>
         <strong>{user.name}</strong><span>{summary.total}h · {summary.label}</span><small>{breakdown}</small>

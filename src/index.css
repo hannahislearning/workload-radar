@@ -367,3 +367,19 @@ main .heatmap-panel { padding:clamp(12px,2.1vw,26px); }
   .workload-mobile button { display:grid; grid-template-columns:1fr auto; gap:3px 7px; padding:10px; border:1px solid var(--border); border-radius:10px; font:inherit; color:var(--text); text-align:left; cursor:pointer; }
   .workload-mobile small { grid-column:1/-1; }
 }
+.status-banner { display:flex; align-items:center; gap:8px; }
+.status-banner span { width:8px; height:8px; border-radius:50%; background:currentColor; flex:none; }
+.status-banner.critical { background:#fbe8e5; border:1px solid #ebc3bf; color:#852f2d; }
+.progress-dialog::backdrop { background:#1c342b66; }
+.source-snippet { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--muted); }
+.found-task { display:grid; grid-template-columns:minmax(0,1fr) 90px minmax(125px,160px) auto; align-items:start; }
+.found-task input { width:100%; min-width:0; }
+.found-task .error { display:block; }
+.stat-link { border:0; padding:0; background:none; color:var(--accent); text-align:left; font:inherit; text-decoration:underline; cursor:pointer; }
+.dashboard .weeknav { margin-bottom:12px; }
+.dashboard-bars { display:grid; gap:7px; }
+.bar-track { background:#e7eee7; height:9px; border-radius:8px; overflow:hidden; display:flex; }
+.bar-track span { background:#86ac93; }
+.bar-track.actual span,.bar-track.split span+span { background:#3c7965; }
+.map-pin-caught { outline:2px dashed #9a423a; outline-offset:3px; }
+@media(max-width:640px) { .found-task { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }

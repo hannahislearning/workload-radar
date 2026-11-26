@@ -7,24 +7,26 @@ import { extractTasks, reviewErrors } from './lib/extractor.js'
 import {
   useAppStore, todayISO, addDays, startOfWeek, weekDates, DAY_NAMES,
   cell, DAILY_LIMIT, taskRemaining, taskDay, deadlineRisk, transferCandidates,
-  dashboardStats, isStale, staleDays, STALE_DAYS, round1, workloadWeekBounds,
+  dashboardStats, isStale, staleDays, round1, workloadWeekBounds,
 } from './lib/store.js'
 
 export default function App() {
   const [state, update, reset] = useAppStore()
   const [selectedTab, setTab] = useState(null)
   const [studioDay, setStudioDay] = useState(null)
-  const [reviewConnected, setReviewConnected] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   useDigestDelivery(update)
   const me = state.users.find((u) => u.id === state.currentUserId)
   const isManager = me.role === 'manager'
-  const tab = selectedTab || (isManager ? 'studio' : 'today')
+  const tab = selectedTab || (isManager ? 'heatmap' : 'today')
   const pending = state.moveRequests.some((r) => r.toUserId === me.id && r.state === 'pending')
 
-  const tabs = [['studio', 'Studio'], ...(isManager
-    ? [['heatmap', 'Heatmap'], ['dashboard', 'Dashboard'], ['history', 'Change history'], ['plan', 'Project plan'], ['digests', 'Admin digests']]
-    : [['today', 'Task board'], ['heatmap', 'Heatmap'], ['upload', 'Upload & review'], ['requests', 'Requests']]), ['channels', 'Connected inbox']]
+  const [dashboardView, setDashboardView] = useState('results')
+  const [heatFocus, setHeatFocus] = useState(null)
+  const tabs = isManager
+    ? [['heatmap', 'Heatmap'], ['dashboard', 'Dashboard'], ['channels', 'Inbox'], ['plan', 'Plan'], ['studio', 'Studio']]
+    : [['today', 'Task board'], ['heatmap', 'Heatmap'], ['channels', 'Inbox'], ['requests', 'Requests'], ['studio', 'Studio']]
+
 
   return (
     <div className="app">
@@ -39,7 +41,8 @@ export default function App() {
               const userId = e.target.value
               setTab(null)
               setStudioDay(null)
-              setReviewConnected(false)
+              setHeatFocus(null)
+              setDashboardView('results')
               update((s) => ({ ...s, currentUserId: userId, movePicker: null }))
             }}>
             {state.users.map((u) => (
@@ -52,7 +55,7 @@ export default function App() {
         {tabs.map(([key, label]) => (
           <button key={key} className={'tab' + (tab === key ? ' active' : '')}
             aria-current={tab === key ? 'page' : undefined}
-            onClick={() => { setStudioDay(null); setReviewConnected(false); setTab(key) }}>{label}{key === 'requests' && pending && <span className="notification-dot" aria-label="Pending requests" />}</button>
+            onClick={() => { setStudioDay(null); setHeatFocus(null); setTab(key) }}>{label}{key === 'requests' && pending && <span className="notification-dot" aria-label="Pending requests" />}</button>
         ))}
       </nav>
       </header>
@@ -60,25 +63,26 @@ export default function App() {
       <main>
         {tab !== 'today' && tab !== 'studio' && <Banner state={state} />}
         {tab === 'studio' && <Studio state={state} isManager={isManager}
-          openChannels={() => setTab('channels')} openDigest={() => setTab('digests')}
+          openChannels={() => setTab('channels')} openDigest={() => { setDashboardView('digests'); setTab('dashboard') }}
           onDay={(user, date) => { setStudioDay({ user, date }); setTab('heatmap') }} />}
-        {tab === 'heatmap' && <HeatmapTab state={state} update={update} me={me} initialDay={studioDay} />}
-        {tab === 'digests' && isManager && <DigestInbox state={state} update={update} />}
-        {tab === 'channels' && (reviewConnected && !isManager
-          ? <UploadTab state={state} update={update} me={me} connected />
-          : <Channels state={state} update={update} me={me} onReview={() => setReviewConnected(true)} />)}
-        {tab === 'dashboard' && isManager && <DashboardTab state={state} />}
+        {tab === 'heatmap' && <HeatmapTab state={state} update={update} me={me} initialDay={studioDay} focus={heatFocus} />}
+        {tab === 'channels' && <Inbox state={state} update={update} me={me} />}
+        {tab === 'dashboard' && isManager && <>
+          <nav className="tabs" aria-label="Dashboard sections">{[['results','Results'],['history','Change history'],['digests','Admin digests']].map(([key,label]) =>
+            <button className={'tab' + (dashboardView === key ? ' active' : '')} key={key} aria-pressed={dashboardView === key} onClick={()=>setDashboardView(key)}>{label}</button>)}</nav>
+          {dashboardView === 'results' && <DashboardTab state={state} onInspect={(focus) => { setStudioDay(null);setHeatFocus(focus);setTab('heatmap') }} />}
+          {dashboardView === 'history' && <HistoryTab state={state} />}
+          {dashboardView === 'digests' && <DigestInbox state={state} update={update} />}
+        </>}
         {tab === 'plan' && isManager && <ProjectPlan users={state.users} onFinish={() => setTab('heatmap')} />}
-        {tab === 'history' && isManager && <HistoryTab state={state} />}
         {tab === 'today' && !isManager && <TodayTab state={state} update={update} me={me} />}
-        {tab === 'upload' && !isManager && <UploadTab state={state} update={update} me={me} />}
         {tab === 'requests' && !isManager && <RequestsTab state={state} update={update} me={me} />}
       </main>
       <footer className="workspace-footer"><span>WorkLoad Radar · Demo workspace</span>
         <div>{confirmReset && <button type="button" onClick={() => setConfirmReset(false)}>Cancel</button>}
           <button type="button" onClick={() => {
             if (!confirmReset) { setConfirmReset(true); return }
-            reset(); setTab(null); setStudioDay(null); setReviewConnected(false); setConfirmReset(false)
+            reset(); setTab(null); setStudioDay(null); setConfirmReset(false)
           }}>{confirmReset ? 'Confirm reset' : 'Reset demo'}</button></div>
       </footer>
     </div>
@@ -104,19 +108,17 @@ function Banner({ state }) {
   const stale = state.users.filter((u) => u.role === 'member' && isStale(state, u.id) && (state.users.find(member => member.id === state.currentUserId)?.role === 'manager' || u.id === state.currentUserId))
   const myPending = state.moveRequests.filter((r) => r.state === 'pending' && r.toUserId === state.currentUserId)
   const items = []
-  if (nextWeekOver.length) items.push(`⚠️ Next week is overloaded: ${[...new Set(nextWeekOver)].join(', ')}`)
-  for (const u of stale) {
-    items.push(`🚨 ${u.name} hasn't logged progress for ${staleDays(state, u.id)} days (alert after ${STALE_DAYS}).`)
-  }
-  if (myPending.length) items.push(`📨 You have ${myPending.length} move request${myPending.length > 1 ? 's' : ''} waiting for your answer.`)
-  if (!items.length) return null
-  return <div className="banner warn" role="alert">{items.map((t, i) => <div key={i}>{t}</div>)}</div>
+  if (nextWeekOver.length) items.push({ text: 'Next week is overloaded: ' + [...new Set(nextWeekOver)].join(', '), tone: 'warn' })
+  for (const user of stale) items.push({ text: user.name + " hasn’t logged progress for " + staleDays(state, user.id) + " days.", tone: 'critical' })
+  if (myPending.length) items.push({ text: myPending.length + ' move request(s) awaiting your answer.', tone: 'ok' })
+  return items.length ? <div role="status">{items.map(({text,tone}) =>
+    <div className={'banner status-banner '+tone} key={text}><span aria-hidden="true" />{text}</div>)}</div> : null
 }
 
 // ---------- heatmap ----------
-function HeatmapTab({ state, update, me, initialDay }) {
+function HeatmapTab({ state, update, me, initialDay, focus }) {
   const [mode, setMode] = useState('all') // default shows hidden workload
-  const [weekOffset, setWeekOffset] = useState(() => initialDay ? Math.round((Date.parse(startOfWeek(initialDay.date)) - Date.parse(startOfWeek(todayISO()))) / 604800000) : 0)
+  const [weekOffset, setWeekOffset] = useState(() => focus?.offset ?? (initialDay ? Math.round((Date.parse(startOfWeek(initialDay.date)) - Date.parse(startOfWeek(todayISO()))) / 604800000) : 0))
   const [selection, setSelection] = useState(initialDay)
   const monday = addDays(startOfWeek(todayISO()), weekOffset * 7)
   const week = weekDates(monday)
@@ -135,7 +137,12 @@ function HeatmapTab({ state, update, me, initialDay }) {
     }, 0)
     return load(candidate) > load(best) ? candidate : best
   }, days[0])
-  const visibleDay = days.includes(day) ? day : hottestDay
+  const flaggedDay = focus?.kind === 'overload' && days.find(date => members.some(user =>
+    cell(state,user.id,date,'all').key === 'over' && cell(state,user.id,date,'planned').key !== 'over'))
+  const visibleDay = days.includes(day) ? day : flaggedDay || hottestDay
+  useEffect(() => {
+    if (focus?.kind === 'risk') document.getElementById('deadline-watch')?.scrollIntoView({ block:'nearest' })
+  }, [focus])
 
   return (
     <section className="heatmap-panel">
@@ -158,7 +165,7 @@ function HeatmapTab({ state, update, me, initialDay }) {
           <span>{DAY_NAMES[i]}</span><strong>{shortDate(date)}</strong>
         </button>)}
       </div>
-      <WorkloadMap state={state} members={members} date={visibleDay} mode={mode} onSelect={setSelection} />
+      <WorkloadMap state={state} members={members} date={visibleDay} mode={mode} onSelect={setSelection} highlight={focus?.kind === 'overload'} />
 
       <HeatmapLegend />
       </div>
@@ -288,7 +295,7 @@ function DeadlineWatch({ state, me }) {
   const risks = state.tasks.map((task) => ({ task, risk: deadlineRisk(state, task) }))
     .filter(({ task, risk }) => risk?.atRisk && (me.role === 'manager' || task.owner === me.id))
     .sort((a, b) => a.task.deadline.localeCompare(b.task.deadline))
-  return <div className="inset"><h3>Deadline watch</h3>
+  return <div className="inset" id="deadline-watch"><h3>Deadline watch</h3>
     {!risks.length && <p className="muted">No deadlines currently flagged.</p>}
     {risks.map(({ task, risk }) => <div className="watch-item" key={task.id}>
       <strong>{task.name}</strong><span className="muted">{state.users.find((user) => user.id === task.owner)?.name} · due {shortDate(task.deadline)}</span>
@@ -363,22 +370,41 @@ function RiskFlag({ risk, deadline }) {
   return <span className="risk-flag">{risk.overdue ? 'Overdue · ' + risk.remaining + 'h left'
     : 'At risk · ' + risk.remaining + 'h left, ' + risk.free + 'h available by ' + shortDate(deadline)}</span>
 }
-function ResultsCards({ state, monday, compact }) {
+function ResultsCards({ state, monday, compact, onInspect }) {
   const stats = dashboardStats(state, monday)
   return <div className="stat-grid">
     <div className="stat"><span className="big">{stats.hiddenPct}%</span><strong>Hidden workload</strong><span>{stats.hiddenHours}h of {stats.totalHours}h remaining came from chats and emails</span></div>
-    <div className="stat"><span className="big">{stats.overloadCaught}</span><strong>Overload days surfaced</strong><span>Person-days missed by the planned-only view</span></div>
-    <div className="stat"><span className="big">{stats.atRisk}</span><strong>Deadlines at risk</strong><span>Open tasks across all dates</span></div>
+    <div className="stat"><span className="big">{stats.overloadCaught}</span><strong>{onInspect ? <button className="stat-link" onClick={()=>onInspect('overload')}>Overload days surfaced</button> : 'Overload days surfaced'}</strong><span>Person-days missed by the planned-only view</span></div>
+    <div className="stat"><span className="big">{stats.atRisk}</span><strong>{onInspect ? <button className="stat-link" onClick={()=>onInspect('risk')}>Deadlines at risk</button> : 'Deadlines at risk'}</strong><span>Open tasks across all dates</span></div>
     {!compact && <>
       <div className="stat"><span className="big">{stats.completed}</span><strong>Tasks completed</strong><span>Scheduled this week</span></div>
       <div className="stat"><span className="big">{stats.accuracy === null ? '—' : stats.accuracy + '%'}</span><strong>Extraction accuracy</strong><span>On uploaded demo messages</span></div>
     </>}
   </div>
 }
-function DashboardTab({ state }) {
+function DashboardTab({ state, onInspect }) {
+  const [offset,setOffset] = useState(0)
+  const { first,last } = workloadWeekBounds(state)
+  const monday = addDays(startOfWeek(todayISO()),offset*7)
+  const days = weekDates(monday)
+  const totals = state.users.filter(user=>user.role==='member').map(user=>({
+    user, plan:round1(days.reduce((sum,date)=>sum+cell(state,user.id,date,'planned').total,0)),
+    actual:round1(days.reduce((sum,date)=>sum+cell(state,user.id,date,'all').total,0)),
+  }))
+  const peak=Math.max(1,...totals.map(row=>row.actual))
+  const hours=source=>round1(state.tasks.filter(task=>task.status==='approved' && task.source===source && days.includes(taskDay(task))).reduce((sum,task)=>sum+taskRemaining(task),0))
+  const whatsapp=hours('whatsapp'), email=hours('email'), total=whatsapp+email
   return <section className="dashboard">
-    <div className="section-heading"><h1>Results dashboard</h1><p>Approved work for the week of {shortDate(startOfWeek(todayISO()))}</p></div>
-    <ResultsCards state={state} />
+    <div className="section-heading"><h1>Results dashboard</h1><p>Approved work for the week of {shortDate(monday)}</p></div>
+    <div className="weeknav"><button className="btn ghost" disabled={offset<=first} onClick={()=>setOffset(offset-1)} aria-label="Previous week">‹</button>
+      <strong>{shortDate(monday)} – {shortDate(days.at(-1))}</strong><button className="btn ghost" disabled={offset>=last} onClick={()=>setOffset(offset+1)} aria-label="Next week">›</button></div>
+    <ResultsCards state={state} monday={monday} onInspect={focus=>onInspect({kind:focus,offset})} />
+    <div className="dashboard-bars"><h2>Planned and actual workload</h2>{totals.map(({user,plan,actual})=><div key={user.id}>
+      <strong>{user.name}</strong><div>Planned {plan}h <div className="bar-track"><span style={{width:100*plan/peak+'%'}} /></div></div>
+      <div>Actual {actual}h <div className="bar-track actual"><span style={{width:100*actual/peak+'%'}} /></div></div>
+    </div>)}
+    <h2>Hidden hours by source</h2><p>WhatsApp {whatsapp}h · Email {email}h</p>
+    <div className="bar-track split"><span style={{width:(total?100*whatsapp/total:0)+'%'}} /><span style={{width:(total?100*email/total:0)+'%'}} /></div></div>
   </section>
 }
 
@@ -405,12 +431,12 @@ function HistoryTab({ state }) {
   const entries = [...state.history].reverse()
   return (
     <section>
-      <h2>Change history</h2>
+      <div className="section-heading"><h1>Change history</h1><p>Review workload changes and progress updates.</p></div>
       {entries.length === 0 && <p className="empty">No changes yet.</p>}
       <ul className="history">
         {entries.map((h) => (
           <li key={h.id}>
-            <span className="when">{h.when.replace('T', ' ').slice(0, 16)}</span>
+            <span className="when">{new Intl.DateTimeFormat('en-GB', {dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(h.when))}</span>
             <strong>{h.actor}</strong> — {h.action}: {h.detail}
           </li>
         ))}
@@ -437,6 +463,8 @@ function TodayTab({ state, update, me }) {
   const meetings = state.meetings.filter((m) => (m.owner === me.id || m.owner === 'everyone') && m.date === today)
   const capacity = cell(state, me.id, today, 'all')
   const active = tasks.find(({ task }) => task.id === editing)?.task
+  const progressDialog = useRef(null)
+  useLayoutEffect(() => { if (active && !progressDialog.current.open) progressDialog.current.showModal() }, [active])
   return <section className="today-board">
     <div className="section-heading"><h1>Task board</h1><p>Demo date {shortDate(today)} · Today’s work and deadlines needing attention · {capacity.available}h work capacity</p></div>
     <Banner state={state} />
@@ -460,19 +488,19 @@ function TodayTab({ state, update, me }) {
       {capacity.onLeave && <div>Leave · 0h available for work</div>}
       {meetings.map((m) => <div key={m.id}>{m.name} · {m.hours}h meeting</div>)}
     </div>}
-    {active && <div className="modal-backdrop" onClick={() => setEditing(null)}>
-      <form className="modal" role="dialog" aria-label="Log your progress" onClick={(event) => event.stopPropagation()} onSubmit={(event) => {
+    {active && <dialog ref={progressDialog} className="modal progress-dialog" aria-label="Log your progress" onClose={() => setEditing(null)}>
+      <form onSubmit={(event) => {
         event.preventDefault()
         const hours = Number(new FormData(event.currentTarget).get('hours'))
         logProgress(update, state, active, active.hours > 0 ? Math.min(100, hours / active.hours * 100) : 100)
-        setEditing(null)
+        progressDialog.current.close()
       }}>
         <h3>Log your progress</h3><p>{active.name} · {active.hours}h estimated</p>
         <label className="progress-field">Total hours worked<input name="hours" type="number" min="0" step="0.1" required autoFocus
           defaultValue={round1(active.hours - taskRemaining(active))} /></label>
-        <div className="logbtns"><button type="button" className="btn ghost" onClick={() => setEditing(null)}>Cancel</button><button className="btn primary">Save progress</button></div>
+        <div className="logbtns"><button type="button" className="btn ghost" onClick={() => progressDialog.current.close()}>Cancel</button><button className="btn primary">Save progress</button></div>
       </form>
-    </div>}
+    </dialog>}
   </section>
 }
 
@@ -508,7 +536,7 @@ function logProgress(update, state, task, percent) {
 // ---------- member: upload & review ----------
 const inboxSources = [['whatsapp', 'WhatsApp'], ['email', 'Email']]
 
-function Channels({ state, update, me, onReview }) {
+function Inbox({ state, update, me }) {
   const manager = me.role === 'manager'
   const linked = state.connections?.[me.id] || {}
   const reviewed = new Set(state.uploads[me.id]?.messageIds || [])
@@ -518,9 +546,7 @@ function Channels({ state, update, me, onReview }) {
     update(s => ({...s, connections:{...s.connections,[me.id]:{...s.connections?.[me.id],[source]:!s.connections?.[me.id]?.[source]}}}))
   }
   return <section className="studio-shell">
-    <div className="studio-heading"><div><h1>Connected inbox</h1><p>Bring work from department inboxes into one review queue.</p></div></div>
-    <p className="muted">Demo connections use built-in messages. No files, account credentials or live inbox access are needed.</p>
-    <div className="channel-steps"><span>Connect channel</span><span>Review extracted work</span><span>Update shared workload</span><span>Summarize completions</span></div>
+    <div className="section-heading"><h1>Inbox</h1><p>Connect demo channels and review extracted work.</p></div>
     <div className="channel-grid">{inboxSources.map(([source,label])=><article className="inset" key={source}>
       <h3>{label}</h3>
       {manager ? <p>{state.users.filter(user=>state.connections?.[user.id]?.[source]).length} teammates connected in this demo</p> : <>
@@ -528,8 +554,8 @@ function Channels({ state, update, me, onReview }) {
         <button className="btn" onClick={()=>toggle(source)}>{linked[source]?'Disconnect':'Connect demo '+label}</button>
       </>}
     </article>)}</div>
-    {!manager && <button className="btn primary" disabled={!available.length} onClick={onReview}>Review {available.length} inbox {available.length===1?'message':'messages'}</button>}
-    {manager && <p className="muted">The admin sees connection counts and approved work. Teammates review their own message findings.</p>}
+    {!manager && <UploadTab state={state} update={update} me={me} connected={Object.values(linked).some(Boolean)} />}
+    {manager && <p className="muted">Teammates review their own findings. Managers see connection counts and approved work.</p>}
   </section>
 }
 
@@ -538,6 +564,8 @@ function UploadTab({ state, update, me, connected = false }) {
   const [results, setResults] = useState([]) // { messageId, tasks, error, finalTasks }
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [fault, setFault] = useState('none')
+  const [filter, setFilter] = useState('all')
+  const [snippets, setSnippets] = useState({})
   const myIds = MEMBER_UPLOADS[me.id] || []
   const reviewed = new Set(state.uploads[me.id]?.messageIds || [])
   const messages = SAMPLE_MESSAGES.filter(m => myIds.includes(m.id) && !reviewed.has(m.id) &&
@@ -550,6 +578,9 @@ function UploadTab({ state, update, me, connected = false }) {
     const res = await extractTasks(messages, fault, (done, total) => setProgress({ done, total }), state, me.id)
     // Privacy rule: raw text is processed and discarded — we only keep the
     // extracted fields below; msg.text never enters app state.
+    // Owner-only review snippets live in this mounted component, never in the shared store.
+    setSnippets(Object.fromEntries(messages.map(message => [message.id, message.text.replace(/\s+/g, ' ').slice(0, 120)])))
+    setFilter('all')
     setResults(res)
     setPhase('review')
   }
@@ -589,6 +620,7 @@ function UploadTab({ state, update, me, connected = false }) {
         detail: `${newTasks.length} task(s) and ${newMeetings.length} meeting(s) added${errors.length ? `, ${errors.length} couldn't be read` : ''}`,
       }],
     }))
+    setSnippets({})
     setPhase('done')
   }
 
@@ -599,8 +631,7 @@ function UploadTab({ state, update, me, connected = false }) {
   if (phase === 'working') {
     return (
       <section>
-        <h2>AI is reading your messages…</h2>
-        <p>{progress.done} / {progress.total} messages processed. Please wait — the screen is never blank while the AI works.</p>
+        <div className="section-heading"><h1>Reading messages</h1><p>{progress.done} of {progress.total} processed</p></div>
         <div className="progressline big"><div className="progressfill" style={{ width: (progress.total ? (progress.done / progress.total) * 100 : 0) + '%' }} /></div>
       </section>
     )
@@ -609,9 +640,16 @@ function UploadTab({ state, update, me, connected = false }) {
   if (phase === 'review') {
     return (
       <section>
-        <h2>Review what the AI found</h2>
-        <p className="muted">Nothing reaches the heatmap until you approve. Edit or delete anything that is wrong.</p>
-        {results.map((r) => {
+        <div className="section-heading"><h1>Review findings</h1><p>{retained.length} tasks found · {needsDate} need a date · {retained.filter(task => task.duplicate).length} possible duplicates · {results.filter(result => result.error).length} errors</p></div>
+        <div className="toggle" aria-label="Filter results">{[['all','All'],['attention','Needs attention'],['duplicates','Duplicates'],['errors','Errors']].map(([key,label]) =>
+          <button key={key} className={filter===key?'on':''} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label}</button>)}</div>
+        {results.filter(result => {
+          const items = result.finalTasks ?? result.tasks
+          if (filter === 'duplicates') return items.some(task => task.duplicate)
+          if (filter === 'errors') return !!result.error
+          if (filter === 'attention') return items.some(task => Object.keys(reviewErrors(task)).length || task.confidence === 'low') || !!result.error
+          return true
+        }).map((r) => {
           const sample = SAMPLE_MESSAGES.find((s) => s.id === r.messageId)
           return (
             <div key={r.messageId} className="review-card">
@@ -621,6 +659,7 @@ function UploadTab({ state, update, me, connected = false }) {
                   setFinal(r.messageId, [{ name: '', hours: 1, deadline: todayISO(), source: sample.source, confidence: 'manual', manual: true }])
                 }}>Add manually</button></span>}
               </div>
+              <p className="source-snippet">{snippets[r.messageId]}</p>
               {(r.finalTasks ?? r.tasks).length === 0 && !r.error && <p className="muted">No tasks found in this message.</p>}
               {(r.finalTasks ?? r.tasks).map((t, i) => {
                 const patch = (changes) => setFinal(r.messageId, (r.finalTasks ?? r.tasks).map((item, index) => index === i ? { ...item, ...changes } : item))
@@ -637,7 +676,7 @@ function UploadTab({ state, update, me, connected = false }) {
                     {errors.hours && <small className="error">{errors.hours}</small>}</label>
                   <label>Deadline <input type="date" value={t.deadline || ''} aria-invalid={!!errors.deadline} onChange={e => patch({ deadline: e.target.value, needsDate: !e.target.value })} />
                     {errors.deadline && <small className="error">{errors.deadline}</small>}</label>
-                  <button className="btn tiny danger" onClick={() => setFinal(r.messageId, (r.finalTasks ?? r.tasks).filter((_, j) => j !== i))}>Delete</button>
+                  <button className="btn tiny danger" aria-label={'Delete '+t.name} onClick={() => setFinal(r.messageId, (r.finalTasks ?? r.tasks).filter((_, j) => j !== i))}>×</button>
                 </div>
               })}
             </div>
@@ -646,7 +685,7 @@ function UploadTab({ state, update, me, connected = false }) {
         <div className="review-actions">
           {needsDate > 0 && <p role="status">{needsDate} {needsDate === 1 ? 'item needs' : 'items need'} a date before you can approve.</p>}
           <button className="btn primary" disabled={invalid} onClick={approveAll}>Approve &amp; add to my workload</button>
-          <button className="btn ghost" onClick={() => setPhase('idle')}>Cancel</button>
+          <button className="btn ghost" onClick={() => { setSnippets({}); setPhase('idle') }}>Cancel</button>
         </div>
       </section>
     )
@@ -654,7 +693,7 @@ function UploadTab({ state, update, me, connected = false }) {
 
   return (
     <section>
-      <h2>{connected ? 'Review connected messages' : 'Upload your emails & WhatsApp chats'}</h2>
+      <div className="section-heading"><h1>Extract and review</h1><p>Check findings before adding work to the heatmap.</p></div>
       {phase === 'done' && <p className="banner ok">Approved! Your tasks are now on the heatmap.</p>}
       {alreadyUploaded && phase !== 'done' && <p className="banner ok">No new messages are available in this view.</p>}
       <div className="upload-sim">
@@ -677,10 +716,10 @@ function UploadTab({ state, update, me, connected = false }) {
 // ---------- member: move requests ----------
 function RequestsTab({ state, update, me }) {
   const mine = state.moveRequests.filter((r) => r.toUserId === me.id)
-  if (!mine.length) return <section><h2>Requests</h2><p className="empty">No move requests for you right now.</p></section>
+  if (!mine.length) return <section><div className="section-heading"><h1>Move requests</h1><p>No move requests for you right now.</p></div></section>
   return (
     <section>
-      <h2>Move requests</h2>
+      <div className="section-heading"><h1>Move requests</h1><p>Review work teammates want to transfer.</p></div>
       {mine.map((r) => {
         const task = state.tasks.find((t) => t.id === r.taskId)
         const from = state.users.find((u) => u.id === r.fromUserId)
@@ -689,7 +728,7 @@ function RequestsTab({ state, update, me }) {
             <div>
               <strong>{task ? task.name : '(deleted task)'}</strong> — {from?.name} → you
               {r.suggestedByAI && <span className="pill">AI suggestion</span>}
-              <div className="muted">Requested {r.createdAt.slice(0, 16).replace('T', ' ')}</div>
+              <div className="muted">Requested {new Intl.DateTimeFormat('en-GB', {dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(r.createdAt))}</div>
             </div>
             {r.state === 'pending' ? (
               <div className="logbtns">
