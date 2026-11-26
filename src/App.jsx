@@ -99,7 +99,11 @@ export default function App() {
   const reports = Object.values(state.officeReports || {}).filter(report => report.sent && !report.reviewed)
   const reportKey = me.id + '|' + weekStart
   const draft = state.officeReports?.[reportKey]
-  const needsCount = manager ? reports.length : pending.length + outgoing.length + messages.length + Number(!!draft && !draft.sent)
+  const today = todayISO()
+  const overloadAlerts = manager ? state.users.filter(user => user.role === 'member')
+    .map(user => ({ user, workload: cell(state, user.id, today, 'all') }))
+    .filter(({ workload }) => workload.key === 'over') : []
+  const needsCount = manager ? reports.length + overloadAlerts.length : pending.length + outgoing.length + messages.length + Number(!!draft && !draft.sent)
 
   useEffect(() => {
     if (!anyTimer) return
@@ -165,7 +169,7 @@ export default function App() {
         {suggestion && <div className="office-suggestion"><span><strong>Suggested transfer</strong><br/>{workLabel(suggestion.task.name)} · {suggestion.from.name} to {suggestion.to.name}</span>
           <button className="office-action" onClick={()=>{openDetails(suggestion.from);requestMove(update,state,suggestion.task,date)}}>Review transfer</button></div>}
       </section>
-      <aside className="office-side office-notifications" ref={rightPanel} aria-label="Work updates">
+      <aside className="office-side office-notifications" ref={rightPanel} aria-label="Work updates" tabIndex={-1}>
         <OfficeTabs tabs={tabs} active={panel} onChange={setPanel} count={needsCount}/>
         <div className="office-panel-content" key={panel}>
         {panel !== detailTab && <div className="side-heading">
@@ -179,6 +183,18 @@ export default function App() {
         </div>}
         {panel==='needs' && <div className="office-feed">
           {!needsCount && <p className="office-hint">You’re caught up. New work and requests will appear here.</p>}
+          {overloadAlerts.map(({ user, workload }) => (
+            <article key={user.id} className="office-message office-overload-alert">
+              <h3>{user.name} is overloaded</h3>
+              <p>{shortDate(today)} · {workload.total}h committed · {workload.limit}h daily limit</p>
+              <p>Select {user.name} on the office floor or open their tasks below to request a transfer.</p>
+              <button type="button" className="office-action" onClick={() => {
+                setMode('all')
+                openDetails(user, today)
+                rightPanel.current?.focus({ preventScroll:true })
+              }}>View {user.name}’s tasks</button>
+            </article>
+          ))}
           {!manager && messages.map(id => {
             const sample = SAMPLE_MESSAGES.find(item => item.id === id)
             const finding = sample.result[0]
