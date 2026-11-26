@@ -47,7 +47,7 @@ function decide(update, state, req, decision) {
     tasks: afterTasks,
     moveRequests: s.moveRequests.map((r) => r.id === req.id ? { ...r, state: decision, decidedAt: new Date().toISOString() } : r),
     history: [...s.history, {
-      id: 'h' + Date.now(), when: new Date().toISOString(), actor: me.name,
+      id: crypto.randomUUID(), when: new Date().toISOString(), actor: me.name,
       action: decision === 'approved' ? 'Approved move' : 'Declined move',
       detail: decision === 'approved'
         ? `"${task.name}" moved from ${from.name} to ${to.name} on ${day}. ${from.name}: ${fromBefore}h → ${fromAfter}h; ${to.name}: ${toBefore}h → ${toAfter}h`

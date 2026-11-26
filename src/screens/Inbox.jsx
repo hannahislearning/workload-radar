@@ -1,7 +1,8 @@
+import { digestClock } from '../lib/digests.js'
 import { useState } from 'react'
 import { todayISO } from '../lib/store.js'
 import { SAMPLE_MESSAGES, MEMBER_UPLOADS } from '../data/samples.js'
-import { extractTasks, reviewErrors } from '../lib/extractor.js'
+import { extractTasks, reviewErrors, approveFindings } from '../lib/extractor.js'
 
 const inboxSources = [['whatsapp', 'WhatsApp'], ['email', 'Email']]
 
@@ -60,35 +61,9 @@ function UploadTab({ state, update, me, connected = false }) {
   const invalid = errorsFor.some(error => Object.keys(error).length)
 
   function approveAll() {
-    const newTasks = []
-    const newMeetings = []
     if (invalid) return
-    for (const r of results) {
-      for (const t of r.finalTasks ?? r.tasks ?? []) {
-        if (t.duplicate && !t.keepDuplicate) continue
-        if (t.isMeeting || t.duplicateOf?.kind === 'meeting') {
-          newMeetings.push({ id: crypto.randomUUID(), name: t.name.trim(), owner: me.id, date: t.deadline, hours: Number(t.hours) })
-        } else {
-          newTasks.push({
-            id: 'x' + Math.random().toString(36).slice(2), name: t.name.trim(), owner: me.id,
-            hours: Number(t.hours), deadline: t.deadline, source: t.source || 'chat',
-            status: 'approved', progress: 0, confidence: t.confidence || 'low',
-          })
-        }
-      }
-    }
-    const errors = results.filter((r) => r.error)
-    update((s) => ({
-      ...s,
-      tasks: [...s.tasks, ...newTasks],
-      meetings: [...s.meetings, ...newMeetings.filter((meeting) => !s.meetings.some((existing) => existing.id === meeting.id))],
-      uploads: { ...s.uploads, [me.id]: { messageIds: [...(s.uploads[me.id]?.messageIds || []), ...results.filter(r => !r.error || r.finalTasks?.length).map(r => r.messageId)], extracted: [...(s.uploads[me.id]?.extracted || []), ...results.map((r) => ({ messageId: r.messageId, tasks: r.tasks, finalTasks: r.finalTasks ?? r.tasks, error: r.error || null }))] } },
-      history: [...s.history, {
-        id: 'h' + Date.now(), when: new Date().toISOString(), actor: me.name,
-        action: 'Approved extracted findings',
-        detail: `${newTasks.length} task(s) and ${newMeetings.length} meeting(s) added${errors.length ? `, ${errors.length} couldn't be read` : ''}`,
-      }],
-    }))
+    const timestamp = new Date(digestClock(state)).toISOString()
+    update(current => approveFindings(current, me, results, timestamp))
     setSnippets({})
     setPhase('done')
   }

@@ -14,12 +14,12 @@ export default function MovePicker({ state, update, headingRef }) {
       ...s,
       movePicker: null,
       moveRequests: [...s.moveRequests, {
-        id: 'mr' + Date.now(), taskId: task.id, fromUserId: task.owner, toUserId: target.id,
+        id: crypto.randomUUID(), taskId: task.id, fromUserId: task.owner, toUserId: target.id,
         requestedBy: s.currentUserId, state: 'pending', createdAt: new Date().toISOString(),
         suggestedByAI: target.id === pick.suggestion,
       }],
       history: [...s.history, {
-        id: 'h' + Date.now(), when: new Date().toISOString(), actor: s.users.find((u) => u.id === s.currentUserId).name,
+        id: crypto.randomUUID(), when: new Date().toISOString(), actor: s.users.find((u) => u.id === s.currentUserId).name,
         action: 'Requested move', detail: `"${task.name}" from ${from.name} to ${target.name} (waiting for approval)`,
       }],
     }))

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { cell, workloadBreakdown } from './lib/store.js'
 import { cellShade, LEAVE_PATTERN } from './lib/shades.js'
 
+const rank={over:5,full:4,busy:3,light:2,free:1,leave:0}
 const positions = [[50,48],[23,34],[78,33],[65,76],[25,73],[86,69]]
 const statusColors = { over:'#c94d45', full:'#d77b42', busy:'#d7a044', free:'#93ac9f', light:'#629568', leave:'#878296' }
 
@@ -44,7 +45,6 @@ function landscape(ctx,w,h,markers) {
 
 export default function WorkloadMap({state,members,date,mode,onSelect}) {
   const canvas=useRef(null)
-  const rank={over:5,full:4,busy:3,light:2,leave:1}
   const markers=useMemo(() => members.map(user=>({user,summary:cell(state,user.id,date,mode)}))
     .sort((a,b)=>rank[b.summary.key]-rank[a.summary.key]||b.summary.total-a.summary.total)
     .map((marker,index)=>({...marker,index,x:positions[index%positions.length][0],y:positions[index%positions.length][1]})), [state,members,date,mode])

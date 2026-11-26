@@ -80,3 +80,29 @@ export async function extractTasks(messages, faultMode = 'none', onProgress = ()
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
+
+export function approveFindings(state, user, results, timestamp) {
+  const reviewed = new Set(state.uploads[user.id]?.messageIds || [])
+  const fresh = results.filter(result => !reviewed.has(result.messageId))
+  const kept = fresh.flatMap(result => result.finalTasks ?? result.tasks)
+    .filter(item => !item.duplicate || item.keepDuplicate)
+  if (!fresh.length || kept.some(item => Object.keys(reviewErrors(item)).length)) return state
+  const tasks = [], meetings = []
+  for (const item of kept) {
+    const details = { id: crypto.randomUUID(), name: item.name.trim(), hours: Number(item.hours), owner: user.id, source: item.source || 'chat' }
+    if (item.isMeeting || item.duplicateOf?.kind === 'meeting') meetings.push({ ...details, date: item.deadline })
+    else tasks.push({ ...details, deadline: item.deadline, progress: 0, status: 'approved', confidence: item.confidence || 'low' })
+  }
+  const previous = state.uploads[user.id]
+  const extracted = new Map((previous?.extracted || []).map(entry => [entry.messageId, entry]))
+  for (const result of fresh) extracted.set(result.messageId, { messageId: result.messageId, tasks: result.tasks, error: result.error || null })
+  return {
+    ...state, tasks: [...state.tasks, ...tasks], meetings: [...state.meetings, ...meetings],
+    uploads: { ...state.uploads, [user.id]: {
+      messageIds: [...reviewed, ...fresh.filter(result => !result.error || result.finalTasks?.length).map(result => result.messageId)],
+      extracted: [...extracted.values()],
+    } },
+    history: [...state.history, { id: crypto.randomUUID(), when: timestamp, actor: user.name,
+      action: 'Approved extracted findings', detail: tasks.length + ' tasks and ' + meetings.length + ' meetings added' }],
+  }
+}
