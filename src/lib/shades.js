@@ -8,6 +8,8 @@ export const LEAVE_PATTERN = 'repeating-linear-gradient(135deg,#e9e8ee 0 7px,#dc
 
 export function cellShade(summary) {
   if (summary.onLeave) return summary.work ? WORKLOAD_SHADES[9] : LEAVE_SHADE
+  if (summary.key === 'over' && summary.total <= 8) return WORKLOAD_SHADES[9]
+  if (summary.key === 'full' && summary.total < 8) return WORKLOAD_SHADES[8]
   const { total } = summary
   const step = total > 7 && total < 8 ? 7 : Math.ceil(total)
   return WORKLOAD_SHADES[Math.min(12, step)]

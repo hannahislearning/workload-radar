@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { todayISO, addDays, startOfWeek, weekDates, DAY_NAMES, cell, taskRemaining, taskDay, deadlineRisk, transferCandidates, workloadWeekBounds } from '../lib/store.js'
+import { todayISO, addDays, startOfWeek, weekDates, DAY_NAMES, cell, taskRemaining, taskDay, deadlineRisk, transferCandidates, workloadWeekBounds, taskAllocations } from '../lib/store.js'
 import { shortDate, candidateDetail } from '../lib/format.js'
 import { requestMove } from '../lib/transfers.js'
 import WorkloadMap from '../WorkloadMap.jsx'
@@ -45,6 +45,13 @@ export default function HeatmapTab({ state, update, me, initialDay, focus }) {
           <button className={mode === 'all' ? 'on' : ''} aria-pressed={mode === 'all'} onClick={() => setMode('all')}>Actual workload</button>
           <button className={mode === 'planned' ? 'on' : ''} aria-pressed={mode === 'planned'} onClick={() => setMode('planned')}>Planned workload</button>
         </div>
+        <div className="toggle" role="group" aria-label="Work scheduling">
+          {[['deadline','Deadline day'],['spread','Spread across days']].map(([key,label]) => {
+            const active = (state.allocation || 'spread') === key
+            return <button key={key} className={active ? 'on' : ''} aria-pressed={active}
+              onClick={() => update(current => ({ ...current, allocation: key }))}>{label}</button>
+          })}
+        </div>
         <div className="weeknav">
           <button className="btn ghost" onClick={() => { setWeekOffset((w) => w - 1) }} disabled={weekOffset <= first} aria-label="Previous week">‹</button>
           <strong aria-live="polite">{shortDate(monday)} – {shortDate(days.at(-1))}</strong>
@@ -63,9 +70,9 @@ export default function HeatmapTab({ state, update, me, initialDay, focus }) {
       </div>
       {isManager && <div className="calendar-results"><ResultsCards state={state} monday={monday} compact /></div>}
       <div className="calendar-insights">
-      {isManager && <SuggestedTransfer state={state} mode={mode} days={days} onReview={(task, user) => {
-        setSelection({ user, date: taskDay(task) })
-        requestMove(update, state, task)
+      {isManager && <SuggestedTransfer state={state} mode={mode} days={days} onReview={(task, user, date) => {
+        setSelection({ user, date })
+        requestMove(update, state, task, date)
       }} />}
       <DeadlineWatch state={state} me={me} />
       </div>
@@ -81,27 +88,27 @@ export default function HeatmapTab({ state, update, me, initialDay, focus }) {
 function SuggestedTransfer({ state, mode, days, onReview }) {
   const pendingTasks = new Set(state.moveRequests.filter((request) => request.state === 'pending').map((request) => request.taskId))
   const suggestion = state.tasks
-    .filter((task) => task.status === 'approved' && days.includes(taskDay(task)) && taskRemaining(task) > 0 &&
+    .filter((task) => task.status === 'approved' && taskRemaining(task) > 0 &&
       (mode === 'all' || task.source === 'plan') && !pendingTasks.has(task.id))
-    .map((task) => ({
-      task,
+    .flatMap(task => taskAllocations(state, task).filter(entry => days.includes(entry.date)).map(({ date }) => ({
+      task, date,
       risk: deadlineRisk(state, task)?.atRisk ?? false,
-      workload: cell(state, task.owner, taskDay(task), 'all'),
-    }))
+      workload: cell(state, task.owner, date, 'all'),
+    })))
     .filter(({ risk, workload }) => risk || workload.key === 'over')
     .sort((a, b) => Number(b.risk) - Number(a.risk) ||
       b.workload.total - a.workload.total || taskRemaining(b.task) - taskRemaining(a.task))
-    .map(({ task }) => ({
-      task,
+    .map(({ task, date }) => ({
+      task, date,
       from: state.users.find((user) => user.id === task.owner),
-      candidate: transferCandidates(state, task).find((entry) => entry.fits),
+      candidate: transferCandidates(state, task, date).find((entry) => entry.fits),
     }))
     .find(({ from, candidate }) => from && candidate)
   return <div className="suggestion heatmap-suggestion"><strong>Suggested transfer</strong>
     {suggestion ? <>
       <p>Move {suggestion.task.name} from {suggestion.from.name} to {suggestion.candidate.user.name}.</p>
       <p className="muted">{candidateDetail(suggestion.candidate)}</p>
-      <button type="button" className="btn primary" onClick={() => onReview(suggestion.task, suggestion.from)}>Review transfer</button>
+      <button type="button" className="btn primary" onClick={() => onReview(suggestion.task, suggestion.from, suggestion.date)}>Review transfer</button>
     </> : <p className="muted">No suitable transfer suggested for this week.</p>}
   </div>
 }

@@ -16,6 +16,7 @@ export const STATE_VERSION = 2
 export function initialState() {
   return {
     version: STATE_VERSION,
+    allocation: 'spread',
     users: USERS,
     currentUserId: 'aina',
     tasks: [...PLAN_TASKS, ...APPROVED_DEMO_TASKS].map((t) => ({ ...t })),
@@ -129,19 +130,38 @@ export function taskInMode(task, mode) {
   return true
 }
 
-// Hours for one person on one date, for the given view mode.
+// Explicitly scheduled work stays pinned. If no eligible workday exists, the
+// deadline retains the hours so overdue and leave conflicts stay visible.
+export function taskAllocations(state, task, owner = task.owner) {
+  const remaining = taskRemaining(task)
+  const day = taskDay(task)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '') || !remaining) return []
+  if (state.allocation === 'deadline' || task.scheduledDate) return [{ date: day, hours: remaining }]
+  const dates = []
+  for (let date = task.startDate || todayISO(); date <= task.deadline; date = addDays(date, 1)) {
+    if (workingDay(date) && !isOnLeave(state, owner, date)) dates.push(date)
+  }
+  return dates.length ? dates.map(date => ({ date, hours: remaining / dates.length })) : [{ date: day, hours: remaining }]
+}
+
+export function allocatedHours(state, task, date) {
+  return taskAllocations(state, task).find(entry => entry.date === date)?.hours ?? 0
+}
+
 export function hoursFor(state, userId, iso, mode) {
-  const work = state.tasks
-    .filter((t) => t.owner === userId && t.status === 'approved' && taskInMode(t, mode) && taskDay(t) === iso)
-    .reduce((sum, t) => sum + taskRemaining(t), 0)
-  return round1(work)
+  return round1(state.tasks.filter(t => t.owner === userId && t.status === 'approved' && taskInMode(t, mode))
+    .reduce((sum, task) => sum + allocatedHours(state, task, iso), 0))
+}
+
+export function dailyLimitFor(state, userId) {
+  return state.users.find(user => user.id === userId)?.dailyLimit ?? DAILY_LIMIT
 }
 
 // Status from total hours (work + meetings). Colour thresholds from the brief.
-export function statusFor(totalHours, onLeave) {
+export function statusFor(totalHours, onLeave, limit = DAILY_LIMIT) {
   if (onLeave && totalHours === 0) return { key: 'leave', label: 'Leave', cls: 'status-leave' }
-  if (onLeave || totalHours > DAILY_LIMIT) return { key: 'over', label: 'Over', cls: 'status-over' }
-  if (totalHours >= 8) return { key: 'full', label: 'Full', cls: 'status-full' }
+  if (onLeave || totalHours > limit) return { key: 'over', label: 'Over', cls: 'status-over' }
+  if (totalHours === limit) return { key: 'full', label: 'Full', cls: 'status-full' }
   if (totalHours === 0) return { key: 'free', label: 'Free', cls: 'status-free' }
   if (totalHours > 4) return { key: 'busy', label: 'Busy', cls: 'status-busy' }
   return { key: 'light', label: 'Light', cls: 'status-light' }
@@ -149,7 +169,7 @@ export function statusFor(totalHours, onLeave) {
 
 export function availableHours(state, userId, iso) {
   if (isOnLeave(state, userId, iso)) return 0
-  return Math.max(0, DAILY_LIMIT - meetingHoursOn(state, userId, iso))
+  return Math.max(0, dailyLimitFor(state, userId) - meetingHoursOn(state, userId, iso))
 }
 
 export function cell(state, userId, iso, mode) {
@@ -157,7 +177,7 @@ export function cell(state, userId, iso, mode) {
   const work = hoursFor(state, userId, iso, mode)
   const meetings = onLeave ? 0 : meetingHoursOn(state, userId, iso)
   const total = round1(work + meetings)
-  return { work, meetings, total, onLeave, available: availableHours(state, userId, iso), ...statusFor(total, onLeave) }
+  return { work, meetings, total, onLeave, available: availableHours(state, userId, iso), limit: dailyLimitFor(state, userId), ...statusFor(total, onLeave, dailyLimitFor(state, userId)) }
 }
 
 export function round1(n) {
@@ -177,7 +197,7 @@ export function deadlineRisk(state, task, today = todayISO()) {
   for (let date = today; date <= task.deadline; date = addDays(date, 1)) {
     if (!workingDay(date)) continue
     const reserved = hoursFor(state, task.owner, date, 'all')
-    const ownAllocation = taskDay(task) === date ? remaining : 0
+    const ownAllocation = allocatedHours(state, task, date)
     free += Math.max(0, availableHours(state, task.owner, date) - (reserved - ownAllocation))
   }
   free = round1(free)
@@ -207,8 +227,14 @@ function taskSkill(task) {
   return null
 }
 
-export function transferCandidates(state, task) {
-  const date = taskDay(task)
+export function transferPreview(state, task, recipient, date) {
+  const moved = { ...state, tasks: state.tasks.map(entry => entry.id === task.id ? { ...entry, owner: recipient } : entry) }
+  return [task.owner, recipient].map(owner => ({
+    before: cell(state, owner, date, 'all'), after: cell(moved, owner, date, 'all'),
+  }))
+}
+
+export function transferCandidates(state, task, date = taskDay(task)) {
   const skill = taskSkill(task)
   const remaining = round1(taskRemaining(task))
   return state.users.filter((user) => user.role === 'member' && user.id !== task.owner).map((user) => {
@@ -223,8 +249,11 @@ export function transferCandidates(state, task) {
       const prior = addDays(date, -offset)
       if (workingDay(prior) && cell(state, user.id, prior, 'all').key === 'over') recentOverload++
     }
-    return { user, free, skill, skillMatch, experience, recentOverload,
-      fits: remaining > 0 && workingDay(date) && free >= remaining }
+    const fits = remaining > 0 && taskAllocations(state, task, user.id).every(entry =>
+      workingDay(entry.date) && !isOnLeave(state, user.id, entry.date) &&
+      entry.hours <= availableHours(state, user.id, entry.date) - hoursFor(state, user.id, entry.date, 'all') + 0.00001)
+    return { user, free, skill, skillMatch, experience, recentOverload, fits,
+      preview: transferPreview(state, task, user.id, date) }
   }).sort((a, b) => Number(b.fits) - Number(a.fits) ||
     Number(b.skillMatch) - Number(a.skillMatch) ||
     (Math.min(b.experience, 3) - b.recentOverload) - (Math.min(a.experience, 3) - a.recentOverload) ||
@@ -233,9 +262,11 @@ export function transferCandidates(state, task) {
 
 export function dashboardStats(state, monday = startOfWeek(todayISO())) {
   const sunday = addDays(monday, 6)
-  const tasks = state.tasks.filter((task) => task.status === 'approved' && taskDay(task) >= monday && taskDay(task) <= sunday)
-  const plannedHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? taskRemaining(task) : 0), 0)
-  const hiddenHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? 0 : taskRemaining(task)), 0)
+  const tasks = state.tasks.filter(task => task.status === 'approved')
+  const hoursInWeek = task => taskAllocations(state, task).filter(entry => entry.date >= monday && entry.date <= sunday)
+    .reduce((sum, entry) => sum + entry.hours, 0)
+  const plannedHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? hoursInWeek(task) : 0), 0)
+  const hiddenHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? 0 : hoursInWeek(task)), 0)
   const totalHours = plannedHours + hiddenHours
   let overloadCaught = 0
   for (const iso of weekDates(monday)) {
@@ -246,7 +277,7 @@ export function dashboardStats(state, monday = startOfWeek(todayISO())) {
   return {
     hiddenPct: totalHours ? Math.round(100 * hiddenHours / totalHours) : 0,
     hiddenHours: round1(hiddenHours), totalHours: round1(totalHours), overloadCaught,
-    completed: tasks.filter((task) => taskRemaining(task) === 0).length,
+    completed: tasks.filter(task => taskRemaining(task) === 0 && taskDay(task) >= monday && taskDay(task) <= sunday).length,
     atRisk: state.tasks.filter((task) => isAtRisk(state, task)).length,
     accuracy: accuracyOf(state),
   }
@@ -307,7 +338,7 @@ export function hasAnyLog(state, userId) {
 
 export function workloadWeekBounds(state) {
   const anchor = startOfWeek(todayISO())
-  const dates = [todayISO(), ...state.tasks.flatMap(t => [t.deadline, taskDay(t)]), ...state.meetings.map(m => m.date)]
+  const dates = [todayISO(), ...state.tasks.flatMap(t => [t.startDate, t.deadline, taskDay(t)]), ...state.meetings.map(m => m.date)]
     .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()
   const offset = date => Math.round((Date.parse(startOfWeek(date)) - Date.parse(anchor)) / 604800000)
   return { first: offset(dates[0]), last: offset(dates.at(-1)) }
@@ -316,9 +347,9 @@ export function workloadWeekBounds(state) {
 export function workloadBreakdown(state, userId, date, mode) {
   const totals = new Map()
   for (const task of state.tasks) {
-    if (task.owner !== userId || task.status !== 'approved' || !taskInMode(task, mode) || taskDay(task) !== date) continue
+    if (task.owner !== userId || task.status !== 'approved' || !taskInMode(task, mode) ) continue
     const source = { plan: 'plan', whatsapp: 'WhatsApp', email: 'email' }[task.source] || 'inbox'
-    totals.set(source, (totals.get(source) || 0) + taskRemaining(task))
+    totals.set(source, (totals.get(source) || 0) + allocatedHours(state,task,date))
   }
   const summary = cell(state, userId, date, mode)
   if (summary.meetings) totals.set('meetings', summary.meetings)

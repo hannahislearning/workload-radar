@@ -1,6 +1,6 @@
 
 import { useEffect, useMemo, useRef } from 'react'
-import { cell, workloadBreakdown } from './lib/store.js'
+import { cell, workloadBreakdown, allocatedHours } from './lib/store.js'
 import { cellShade, LEAVE_PATTERN } from './lib/shades.js'
 
 const rank={over:5,full:4,busy:3,light:2,free:1,leave:0}
@@ -43,7 +43,7 @@ function landscape(ctx,w,h,markers) {
   }
 }
 
-export default function WorkloadMap({state,members,date,mode,onSelect}) {
+export default function WorkloadMap({state,members,date,mode,onSelect,highlight}) {
   const canvas=useRef(null)
   const markers=useMemo(() => members.map(user=>({user,summary:cell(state,user.id,date,mode)}))
     .sort((a,b)=>rank[b.summary.key]-rank[a.summary.key]||b.summary.total-a.summary.total)
@@ -66,7 +66,7 @@ export default function WorkloadMap({state,members,date,mode,onSelect}) {
     <canvas ref={canvas} aria-hidden="true"/>
     <div className="map-key" aria-live="polite"><span className={count?'map-alert-dot':''}/>{count ? count+' overloaded '+(count===1?'teammate':'teammates') : 'No teammates overloaded'}</div>
     {markers.map(({user,summary,x,y,index})=>{
-      const pending=state.moveRequests.some(r=>r.state==='pending'&&[r.toUserId,r.fromUserId].includes(user.id)&&state.tasks.some(t=>t.id===r.taskId&&(t.scheduledDate||t.deadline)===date))
+      const pending=state.moveRequests.some(r=>r.state==='pending'&&[r.toUserId,r.fromUserId].includes(user.id)&&state.tasks.some(t=>t.id===r.taskId&&(r.date===date||allocatedHours(state,t,date)>0)))
       const breakdown = workloadBreakdown(state,user.id,date,mode)
       const caught = highlight && summary.key === 'over' && cell(state,user.id,date,'planned').key !== 'over'
       return <button type="button" key={user.id} className={'map-pin'+(index===0?' map-pin-primary':'')+(pending?' map-pin-pending':'')+(caught?' map-pin-caught':'')}

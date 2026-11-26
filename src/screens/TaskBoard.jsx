@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { todayISO, cell, taskRemaining, taskDay, deadlineRisk, round1 } from '../lib/store.js'
+import { todayISO, cell, taskRemaining, allocatedHours, deadlineRisk, round1 } from '../lib/store.js'
 import { digestClock } from '../lib/digests.js'
 import { shortDate } from '../lib/format.js'
 import Toast from '../components/Toast.jsx'
@@ -17,7 +17,7 @@ export default function TodayTab({ state, update, me }) {
   }, [undo])
   const tasks = state.tasks.filter((task) => task.owner === me.id && task.status === 'approved')
     .map((task) => ({ task, risk: deadlineRisk(state, task) }))
-    .filter(({ task, risk }) => taskDay(task) === today || task.deadline === today || risk?.atRisk)
+    .filter(({ task, risk }) => allocatedHours(state, task, today) > 0 || task.deadline === today || risk?.atRisk)
     .sort((a, b) => Number(Boolean(b.risk?.atRisk)) - Number(Boolean(a.risk?.atRisk)) ||
       a.task.deadline.localeCompare(b.task.deadline) || taskRemaining(b.task) - taskRemaining(a.task))
   const meetings = state.meetings.filter((m) => (m.owner === me.id || m.owner === 'everyone') && m.date === today)

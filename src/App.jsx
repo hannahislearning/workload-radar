@@ -73,7 +73,7 @@ export default function App() {
         {tab === 'dashboard' && isManager && <>
           <nav className="tabs" aria-label="Dashboard sections">{[['results','Results'],['history','Change history'],['digests','Admin digests']].map(([key,label]) =>
             <button className={'tab' + (dashboardView === key ? ' active' : '')} key={key} aria-pressed={dashboardView === key} onClick={()=>setDashboardView(key)}>{label}</button>)}</nav>
-          {dashboardView === 'results' && <DashboardTab state={state} onInspect={(focus) => { setStudioDay(null);setHeatFocus(focus);setTab('heatmap') }} />}
+          {dashboardView === 'results' && <DashboardTab state={state} onInspect={(focus) => { if (focus.kind === 'history') { setDashboardView('history'); return }; setStudioDay(null); setHeatFocus(focus); setTab('heatmap') }} />}
           {dashboardView === 'history' && <HistoryTab state={state} />}
           {dashboardView === 'digests' && <DigestInbox state={state} update={update} />}
         </>}

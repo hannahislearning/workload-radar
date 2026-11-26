@@ -14,7 +14,7 @@ export default function MovePicker({ state, update, headingRef }) {
       ...s,
       movePicker: null,
       moveRequests: [...s.moveRequests, {
-        id: crypto.randomUUID(), taskId: task.id, fromUserId: task.owner, toUserId: target.id,
+        id: crypto.randomUUID(), date: pick.date, taskId: task.id, fromUserId: task.owner, toUserId: target.id,
         requestedBy: s.currentUserId, state: 'pending', createdAt: new Date().toISOString(),
         suggestedByAI: target.id === pick.suggestion,
       }],
@@ -29,13 +29,16 @@ export default function MovePicker({ state, update, headingRef }) {
       <h4 id="transfer-picker-title" ref={headingRef} tabIndex={-1}>Move “{task.name}”</h4>
       <p className="muted">Currently with {from.name}, due {shortDate(task.deadline)}.</p>
       <ul className="picker-list">
-        {transferCandidates(state, task).map((candidate) => (
+        {transferCandidates(state, task, pick.date).map((candidate) => (
           <li key={candidate.user.id}>
             <div className="picker-actions">
               <button type="button" className="btn" onClick={() => choose(candidate.user.id)}>Ask {candidate.user.name}</button>
               {candidate.user.id === pick.suggestion && <span className="pill ai">Suggested</span>}
             </div>
             <p className="muted">{candidateDetail(candidate)}{candidate.fits ? '' : ' · Exceeds available capacity'}</p>
+            <div className="transfer-preview"><strong>{pick.date ? shortDate(pick.date) : 'Work day'} preview</strong>
+              {candidate.preview.map(({before,after},index)=><div key={index}>{index ? candidate.user.name : from.name}: {before.total}h {before.label} → {after.total}h {after.label}</div>)}
+            </div>
           </li>
         ))}
       </ul>

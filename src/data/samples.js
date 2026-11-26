@@ -5,10 +5,10 @@
 
 export const USERS = [
   { id: 'aina', name: 'Ms Aina', role: 'manager' },
-  { id: 'kumar', name: 'Kumar', role: 'member' },
-  { id: 'meiling', name: 'Mei Ling', role: 'member' },
-  { id: 'hafiz', name: 'Hafiz', role: 'member' },
-  { id: 'june', name: 'June', role: 'member' },
+  { id: 'kumar', name: 'Kumar', role: 'member', dailyLimit: 8 },
+  { id: 'meiling', name: 'Mei Ling', role: 'member', dailyLimit: 8 },
+  { id: 'hafiz', name: 'Hafiz', role: 'member', dailyLimit: 8 },
+  { id: 'june', name: 'June', role: 'member', dailyLimit: 6 },
 ]
 
 // The demo is anchored to this week so the heatmap is always populated.

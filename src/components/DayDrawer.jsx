@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react'
-import { cell, taskRemaining, taskDay, deadlineRisk, round1 } from '../lib/store.js'
+import { cell, taskRemaining, taskDay, allocatedHours, deadlineRisk, round1 } from '../lib/store.js'
 import { shortDate } from '../lib/format.js'
 import { requestMove } from '../lib/transfers.js'
 import MovePicker from './MovePicker.jsx'
@@ -12,14 +12,14 @@ export default function DayDrawer({ state, update, selection, mode, isManager, o
   const summary = cell(state, user.id, date, mode)
   const tasks = state.tasks.filter((task) =>
     task.owner === user.id && task.status === 'approved' && taskRemaining(task) > 0 &&
-    (taskDay(task) === date || task.deadline === date) && (mode === 'all' || task.source === 'plan'))
+    (allocatedHours(state, task, date) > 0 || task.deadline === date) && (mode === 'all' || task.source === 'plan'))
   const meetings = state.meetings.filter((meeting) =>
     meeting.date === date && (meeting.owner === user.id || meeting.owner === 'everyone'))
   const requests = state.moveRequests.filter((request) => request.state === 'pending')
   const pendingFor = (task) => requests.find((request) => request.taskId === task.id)
   const groups = [
     ['Tasks due this day', tasks.filter((task) => task.deadline === date)],
-    ['Scheduled tasks', tasks.filter((task) => taskDay(task) === date && task.deadline !== date)],
+    ['Scheduled tasks', tasks.filter((task) => allocatedHours(state, task, date) > 0 && task.deadline !== date)],
   ]
   const activePicker = isManager && tasks.some((task) => task.id === state.movePicker?.taskId)
 
@@ -39,7 +39,7 @@ export default function DayDrawer({ state, update, selection, mode, isManager, o
         <div><h2 id="day-drawer-title">{user.name}</h2><p>{shortDate(date)} · {mode === 'all' ? 'Actual workload' : 'Planned workload'}</p></div>
         <button type="button" className="btn ghost" autoFocus onClick={() => dialogRef.current.close()}>Close</button>
       </header>
-      <div className="drawer-summary"><strong>{summary.total}h committed</strong><span>{summary.label} · {summary.available}h work capacity</span></div>
+      <div className="drawer-summary"><strong>{summary.total}h committed</strong><span>{summary.label} · {summary.available}h work capacity of {summary.limit}h</span></div>
       {summary.onLeave && <p className="drawer-note">On leave · 0h available for work</p>}
       {groups.map(([heading, items]) => <section className="drawer-section" key={heading}>
         <h3>{heading}</h3>
@@ -49,10 +49,10 @@ export default function DayDrawer({ state, update, selection, mode, isManager, o
             return <li key={task.id}>
               <div className="drawer-task-line"><strong>{task.name}</strong><span>{task.hours}h est.</span></div>
               <p className="muted">{round1(taskRemaining(task))}h left · Due {shortDate(task.deadline)}
-                {taskDay(task) !== date && ' · Scheduled ' + shortDate(taskDay(task))}</p>
+                {allocatedHours(state, task, date) > 0 ? ' · ' + round1(allocatedHours(state, task, date)) + 'h allocated today' : ' · Scheduled ' + shortDate(taskDay(task))}</p>
               <RiskFlag risk={deadlineRisk(state, task)} deadline={task.deadline} />
               {pending ? <p className="drawer-note">Waiting for {state.users.find((member) => member.id === pending.toUserId)?.name}’s approval</p>
-                : isManager && <button type="button" className="btn tiny" onClick={() => requestMove(update, state, task)}>Move task</button>}
+                : isManager && <button type="button" className="btn tiny" onClick={() => requestMove(update, state, task, date)}>Move task</button>}
             </li>
           })}
         </ul>}

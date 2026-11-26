@@ -1,6 +1,6 @@
 
 import { describe, expect, it } from 'vitest'
-import { initialState, cell, statusFor, deadlineRisk, transferCandidates, dashboardStats } from './store.js'
+import { initialState, cell, statusFor, deadlineRisk, transferCandidates, dashboardStats, taskAllocations, availableHours, transferPreview } from './store.js'
 import { cellShade } from './shades.js'
 import { approveFindings, findingsFor, reviewErrors } from './extractor.js'
 import { MEMBER_UPLOADS, SAMPLE_MESSAGES } from '../data/samples.js'
@@ -39,7 +39,7 @@ describe('review and approval', ()=>{
     const reviewed=results.map(result=>({...result, finalTasks:result.tasks.flatMap(t=>{
       if (result.messageId==='m4') return []
       const corrected={m5:'2026-12-04',m7:'2026-11-26',m13:'2026-11-27'}[result.messageId]
-      return [{...t,...(corrected && {deadline:corrected,needsDate:false})}]
+      return [{...t,...(corrected && {deadline:corrected,needsDate:false,keepDuplicate:result.messageId==='m5'})}]
     })}))
     const next=approveFindings(state,user,reviewed,'2026-11-23')
     expect(cell(next,'kumar','2026-11-25','all')).toMatchObject({total:10,key:'over',meetings:2})
@@ -52,7 +52,7 @@ describe('review and approval', ()=>{
 
 describe('workload decisions', ()=>{
   it('distinguishes overdue, at risk and OK', ()=>{
-    const state=initialState()
+    const state={...initialState(), allocation:'deadline'}
     expect(deadlineRisk(state,taskById(state,'plan-6'),'2026-11-24')).toMatchObject({overdue:true,atRisk:true})
     expect(deadlineRisk(state,taskById(state,'demo-tender'))).toMatchObject({remaining:6,free:5,atRisk:true})
     expect(deadlineRisk(state,taskById(state,'plan-1'))).toMatchObject({atRisk:false})
@@ -70,5 +70,22 @@ describe('workload decisions', ()=>{
     const after=dashboardStats(state)
     expect(after.hiddenHours).toBe(before.hiddenHours-3)
     expect(after.totalHours).toBe(before.totalHours-3)
+  })
+})
+
+describe('spread scheduling and personal capacity', () => {
+  it('conserves hours across weekdays and skips leave', () => {
+    const state = initialState()
+    const task = {...taskById(state,'plan-1'),owner:'june',hours:6,deadline:'2026-11-27'}
+    const dates = taskAllocations(state,task)
+    expect(dates).toEqual([
+      {date:'2026-11-23',hours:2},
+      {date:'2026-11-24',hours:2},
+      {date:'2026-11-25',hours:2},
+    ])
+    expect(availableHours(state,'june','2026-11-24')).toBe(5)
+    const [from,to] = transferPreview({...state,allocation:'deadline'},taskById(state,'plan-1'),'meiling','2026-11-25')
+    expect(from.before.total-from.after.total).toBe(3)
+    expect(to.after.total-to.before.total).toBe(3)
   })
 })

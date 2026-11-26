@@ -1,87 +1,39 @@
-# WorkLoad Radar (prototype)
+# WorkLoad Radar
 
-A web app that turns hidden work in chats and emails into a visible, fair team
-workload picture. Team members "upload" sample emails and WhatsApp messages,
-an AI-style extractor finds the tasks, members review and approve them, and a
-shared heatmap shows each person's real hours per day — including meetings,
-leave and work that never made it to the project plan.
+Browser-only React prototype for reviewing hidden work, comparing team workload and requesting transfers. Demo identity, inbox connections and message extraction use sample data.
 
-Built as a 3-day MVP prototype: no logins (user switcher instead), no real
-inbox connections, all data lives in the browser and resets when cleared.
+## Run locally
 
-## Quick start
+Requires Node 22.12+.
 
-```bash
-npm install
+```sh
+npm ci
 npm run dev
+npm run lint
+npm test
+npm run build
 ```
 
-Open http://localhost:5173. Requires Node 18+.
+## Demo path
 
-## The demo path (matches the brief's user journey)
+1. Open as **Ms Aina**. In Heatmap choose **Deadline day** so the walkthrough uses the original deadline-day model. Switch **Actual / Planned** to compare the two views.
+2. Switch to **Kumar → Inbox**. Connect both demo channels or leave both disconnected to use the sample bundle. Extract **14 messages**.
+3. In Review, keep **Skip** on the vendor-report and client-demo duplicates. Delete the uncertain vendor-invoice finding, choose **Add anyway** on Tender docs and change its date to **4 Dec 2026**, and date **Review migration script** for **26 Nov** and **Send updated sitemap** for **27 Nov**. Approve becomes available after both dates are set.
+4. As **Ms Aina**, pick **Wed 25 Nov**. Kumar has **10h Over** in Actual and **5h** in Planned. In the drawer, Vendor report is 3h, supplier price comparison is 3h, audit queries are 2h, and Client demo call appears once under Meetings for 2h.
+5. In Kumar’s Wednesday drawer, move **Vendor report**. Review the before/after totals and send the request to **Mei Ling**. Switch to her **Requests** and approve. The move updates the heatmap and appears under **Dashboard → Change history**.
+6. As **Kumar**, open the **Task board**, log hours or mark **Weekly status report** done. Click **Undo** within five seconds to restore its previous progress. Complete it again to test the digest.
+7. As **Hafiz**, check the overdue progress warning. Return to **Ms Aina → Dashboard** for workload bars and deadline risks. In **Admin digests**, simulate two days to see Kumar’s completion.
+8. Return to **Heatmap → Spread across days** to compare the default model. At narrow widths, use the weekday picker and teammate list.
 
-1. Start as **Ms Aina (manager)** — the heatmap shows "planned work only" is
-   calm; toggle **Planned + chat & email** (the default) to see reality.
-2. Switch to **Kumar** and extract his 14 demo messages. Vendor report and Client demo call should be flagged as duplicates.
-3. Keep **Skip** on duplicates, delete the uncertain invoice, change Tender docs to 4 Dec 2026, and confirm dates for both vague items (choose 26 and 27 Nov to keep Wednesday unchanged). Approve the findings.
-4. Open Kumar’s **Wednesday, 25 Nov** map marker. It shows **10h Over**: Vendor report (3h), supplier price comparison (3h), audit queries (2h), and one Client demo call (2h) under Meetings. Planned workload is **5h**.
-5. As **Ms Aina**, flip Kumar's Wednesday, click **Move…** on a task. The app
-   suggests the colleague with the most free hours (Mei Ling). Send the request.
-6. As **Mei Ling**: the banner shows the pending request; **Requests** →
-   **Approve**. The heatmap updates and Change history records before/after
-   hours for both people. (Decline works too — the task stays put.)
-7. As **Kumar**: **Today's tasks** → log 50% → the heatmap cools down.
-8. The banner shows a red alert for **Hafiz** (no progress logged for 6 days).
-9. **Dashboard** (manager): % of hidden work, overload days caught, extraction
-   accuracy (target ≥85%), tasks at risk.
-
-## Testing failure modes
-
-On the upload screen, "Simulate AI fault" offers:
-
-- **Timeout on one message** — the affected card shows "The AI took too long to
-  read this message" with an **Add manually** button, so the member isn't blocked.
-- **Unreadable AI answer** — same fallback after an automatic retry fails.
-
-"Reset demo" (click twice) restores the seed data.
-
-## What's simulated vs real
-
-| Real | Simulated (prototype only) |
-| --- | --- |
-| Heatmap maths, status colours + text labels | The "AI" extraction (canned results, deterministic) |
-| Review/approve flow, edit/delete before approval | Upload bundles instead of Gmail/WhatsApp |
-| Move requests with approval/decline + history | Login (user switcher instead) |
-| Progress logging, stale alerts, risk flags | Storage (browser localStorage, resets when cleared) |
-| Dashboard numbers, extraction-accuracy metric | Meetings/leave come from seed data, not parsing |
-
-Privacy rule honoured: raw message text is processed by the extractor and
-discarded — it is never stored in app state and never shown to the manager.
+Reset demo restores the seed data. Inbox also offers simulated extraction failures with manual entry.
 
 ## Directory map
 
-```
-src/
-  App.jsx            All screens (heatmap, upload/review, today, requests,
-                     dashboard, history) + the move-picker dialog
-  index.css          Styling, status colours, mobile layout
-  lib/
-    extractor.js     Simulated AI service: latency, fault modes, error shape
-    store.js         localStorage state + ALL the maths: capacity, status
-                     thresholds, deadline risk, dashboard stats, accuracy
-  data/
-    samples.js       Users, plan tasks, meetings, leave, 20 labelled sample
-                     messages with canned AI results and truth labels
-```
+- `src/App.jsx` — role-based navigation and screen routing
+- `src/screens/` — heatmap, task board, inbox, requests, dashboard, history and plan
+- `src/components/` — drawer, transfer picker, alerts, legend, metric cards and undo toast
+- `src/Studio.jsx`, `src/WorkloadMap.jsx`, `src/Digests.jsx` — interactive office, desktop contour map and admin digests
+- `src/lib/` — allocation, extraction, deduplication, formatting, palette, digests and Vitest tests
+- `src/data/samples.js` — demo users, approved work and labelled message fixtures
 
-## Known limitations
-
-- The extractor is a simulation; a real version would call the ILMU API from a
-  server route with the key in an environment variable (never in the browser).
-- Data is per-browser; there is no shared server, so two people can't really
-  collaborate — permissions are demonstrated through the role-based UI.
-- Deadlines land on their deadline day in the heatmap (simple, explainable
-  model) rather than being spread across available days.
-- Accuracy is graded only on messages someone actually uploaded (the demo
-  covers Kumar's 12; upload as Mei Ling/Hafiz to cover more).
-- The demo clock is fixed to the week of 2026-11-23 so the demo always works.
+Draft findings and owner-only snippets stay in the mounted review UI. Raw message text never enters persisted state. The prototype uses the fixed demo day **23 Nov 2026**; digest time advances through the simulation control.

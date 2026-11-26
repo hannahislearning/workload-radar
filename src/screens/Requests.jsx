@@ -34,7 +34,7 @@ function decide(update, state, req, decision) {
   const task = state.tasks.find((t) => t.id === req.taskId)
   const from = state.users.find((u) => u.id === req.fromUserId)
   const to = state.users.find((u) => u.id === req.toUserId)
-  const day = taskDay(task)
+  const day = req.date || taskDay(task)
   // before/after hours for BOTH people, computed from the same snapshot
   const fromBefore = cell(state, req.fromUserId, day, 'all').total
   const toBefore = cell(state, req.toUserId, day, 'all').total
