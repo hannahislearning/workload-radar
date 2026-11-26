@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { USERS, PLAN_TASKS, APPROVED_DEMO_TASKS, PLAN_MEETINGS, LEAVE, DEMO_TODAY, SAMPLE_MESSAGES } from '../data/samples.js'
 
 const STORAGE_KEY = 'workload-radar-v1'
+export const STATE_VERSION = 2
 
 // ---------- shape of the app state ----------
 // tasks: approved + pending-review extracted tasks. Only tasks with
@@ -14,6 +15,7 @@ const STORAGE_KEY = 'workload-radar-v1'
 
 export function initialState() {
   return {
+    version: STATE_VERSION,
     users: USERS,
     currentUserId: 'aina',
     tasks: [...PLAN_TASKS, ...APPROVED_DEMO_TASKS].map((t) => ({ ...t })),
@@ -35,7 +37,8 @@ export function initialState() {
 export function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    const stored = raw ? JSON.parse(raw) : null
+    if (stored?.version === STATE_VERSION) return stored
   } catch {
     // corrupted storage -> start fresh
   }
