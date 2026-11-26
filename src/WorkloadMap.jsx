@@ -1,10 +1,10 @@
 
 import { useEffect, useRef } from 'react'
-import { cell } from './lib/store.js'
-import { cellShade } from './Studio.jsx'
+import { cell, workloadBreakdown } from './lib/store.js'
+import { cellShade, LEAVE_PATTERN } from './Studio.jsx'
 
 const positions = [[50,48],[23,34],[78,33],[65,76],[25,73],[86,69]]
-const statusColors = { over:'#c94d45', full:'#d77b42', busy:'#d7a044', light:'#629568', leave:'#878296' }
+const statusColors = { over:'#c94d45', full:'#d77b42', busy:'#d7a044', free:'#93ac9f', light:'#629568', leave:'#878296' }
 
 function landscape(ctx,w,h,markers) {
   ctx.clearRect(0,0,w,h)
@@ -62,17 +62,27 @@ export default function WorkloadMap({state,members,date,mode,onSelect}) {
     return ()=>observer.disconnect()
   },[state,date,mode])
   const count=markers.filter(m=>m.summary.key==='over').length
-  return <div className="workload-map" aria-label="Department workload map">
+  return <><div className="workload-map" aria-label="Department workload map">
     <canvas ref={canvas} aria-hidden="true"/>
     <div className="map-key" aria-live="polite"><span className={count?'map-alert-dot':''}/>{count ? count+' overloaded '+(count===1?'teammate':'teammates') : 'No teammates overloaded'}</div>
     {markers.map(({user,summary,x,y,index})=>{
       const pending=state.moveRequests.some(r=>r.state==='pending'&&[r.toUserId,r.fromUserId].includes(user.id)&&state.tasks.some(t=>t.id===r.taskId&&(t.scheduledDate||t.deadline)===date))
+      const breakdown = workloadBreakdown(state,user.id,date,mode)
       return <button type="button" key={user.id} className={'map-pin'+(index===0?' map-pin-primary':'')+(pending?' map-pin-pending':'')}
-        style={{left:x+'%',top:y+'%','--pin-color':statusColors[summary.key],'--pin-tint':cellShade(summary)}}
-        aria-haspopup="dialog" aria-label={user.name+', '+summary.total+' hours, '+summary.label+'. Show day details'} onClick={()=>onSelect({user,date})}>
-        <span className="map-pin-point" aria-hidden="true"/><strong>{user.name}</strong>
+        style={{left:x+'%',top:y+'%','--pin-color':statusColors[summary.key],'--pin-tint':cellShade(summary),'--workload-fill':summary.key==='leave'?LEAVE_PATTERN:cellShade(summary)}}
+        aria-haspopup="dialog" aria-label={user.name+', '+summary.total+' hours, '+summary.label+'. '+breakdown+'. Show day details'} onClick={()=>onSelect({user,date})}>
+        <span className="map-breakdown">{breakdown}</span><span className="map-pin-point" aria-hidden="true"/><strong>{user.name}</strong>
         <span>{summary.onLeave&&!summary.work?'Leave':summary.total+'h · '+summary.label}</span>
       </button>
     })}
-  </div>
+  </div><div className="workload-mobile" aria-label="Selected day workload">
+    {markers.map(({user,summary}) => {
+      const breakdown = workloadBreakdown(state,user.id,date,mode)
+      return <button type="button" key={user.id} style={{background:summary.key==='leave'?LEAVE_PATTERN:cellShade(summary)}}
+        aria-haspopup="dialog" aria-label={user.name+'. '+summary.label+'. '+breakdown}
+        onClick={()=>onSelect({user,date})}>
+        <strong>{user.name}</strong><span>{summary.total}h · {summary.label}</span><small>{breakdown}</small>
+      </button>
+    })}
+  </div></>
 }

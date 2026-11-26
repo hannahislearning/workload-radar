@@ -139,6 +139,7 @@ export function statusFor(totalHours, onLeave) {
   if (onLeave && totalHours === 0) return { key: 'leave', label: 'Leave', cls: 'status-leave' }
   if (onLeave || totalHours > DAILY_LIMIT) return { key: 'over', label: 'Over', cls: 'status-over' }
   if (totalHours >= 8) return { key: 'full', label: 'Full', cls: 'status-full' }
+  if (totalHours === 0) return { key: 'free', label: 'Free', cls: 'status-free' }
   if (totalHours > 4) return { key: 'busy', label: 'Busy', cls: 'status-busy' }
   return { key: 'light', label: 'Light', cls: 'status-light' }
 }
@@ -307,4 +308,17 @@ export function workloadWeekBounds(state) {
     .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()
   const offset = date => Math.round((Date.parse(startOfWeek(date)) - Date.parse(anchor)) / 604800000)
   return { first: offset(dates[0]), last: offset(dates.at(-1)) }
+}
+
+export function workloadBreakdown(state, userId, date, mode) {
+  const totals = new Map()
+  for (const task of state.tasks) {
+    if (task.owner !== userId || task.status !== 'approved' || !taskInMode(task, mode) || taskDay(task) !== date) continue
+    const source = { plan: 'plan', whatsapp: 'WhatsApp', email: 'email' }[task.source] || 'inbox'
+    totals.set(source, (totals.get(source) || 0) + taskRemaining(task))
+  }
+  const summary = cell(state, userId, date, mode)
+  if (summary.meetings) totals.set('meetings', summary.meetings)
+  const parts = [...totals].filter(([, hours]) => hours > 0).map(([source, hours]) => round1(hours) + 'h ' + source)
+  return parts.length ? parts.join(' · ') + ' = ' + summary.total + 'h' : summary.onLeave ? 'On leave' : '0h scheduled'
 }

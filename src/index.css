@@ -357,3 +357,13 @@ main .heatmap-panel { padding:clamp(12px,2.1vw,26px); }
   .map-key { top:8px; left:8px; }
 }
 @media(prefers-reduced-motion:reduce) { .map-pin-point { transition:none; } }
+.map-breakdown { display:none; position:absolute; bottom:100%; z-index:5; max-width:190px; white-space:normal; width:max-content; background:#25483e; color:white; border-radius:7px; padding:5px 8px; font-size:12px; text-shadow:none; }
+.map-pin:hover,.map-pin:focus-visible { z-index:5; }
+.map-pin:hover .map-breakdown,.map-pin:focus-visible .map-breakdown { display:block; }
+.workload-mobile { display:none; }
+@media(max-width:699px) {
+  .workload-map { display:none; }
+  .workload-mobile { display:grid; gap:7px; }
+  .workload-mobile button { display:grid; grid-template-columns:1fr auto; gap:3px 7px; padding:10px; border:1px solid var(--border); border-radius:10px; font:inherit; color:var(--text); text-align:left; cursor:pointer; }
+  .workload-mobile small { grid-column:1/-1; }
+}

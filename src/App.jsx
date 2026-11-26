@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SAMPLE_MESSAGES, MEMBER_UPLOADS, PLAN_TASKS, PLAN_MEETINGS } from './data/samples.js'
 import WorkloadMap from './WorkloadMap.jsx'
-import Studio, { WORKLOAD_SHADES, LEAVE_SHADE } from './Studio.jsx'
+import Studio, { WORKLOAD_SHADES, LEAVE_PATTERN } from './Studio.jsx'
 import { DigestInbox, digestClock, useDigestDelivery } from './Digests.jsx'
 import { extractTasks, reviewErrors } from './lib/extractor.js'
 import {
@@ -245,9 +245,9 @@ function DayDrawer({ state, update, selection, mode, isManager, onDismiss }) {
 
 function HeatmapLegend() {
   const bands = [
-    ['0h', WORKLOAD_SHADES.slice(0, 1)], ['Light · 1–4h', WORKLOAD_SHADES.slice(1, 5)],
+    ['Free · 0h', WORKLOAD_SHADES.slice(0, 1)], ['Light · 1–4h', WORKLOAD_SHADES.slice(1, 5)],
     ['Busy · 5–7h', WORKLOAD_SHADES.slice(5, 8)], ['Full · 8h', WORKLOAD_SHADES.slice(8, 9)],
-    ['Over · >8h', WORKLOAD_SHADES.slice(9)], ['Leave', [LEAVE_SHADE]],
+    ['Over · >8h', WORKLOAD_SHADES.slice(9)], ['Leave', [LEAVE_PATTERN]],
   ]
   return <div className="legend" aria-label="Workload colors">
     {bands.map(([name, shades]) => <span key={name} className="legend-band"

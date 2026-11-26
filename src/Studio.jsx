@@ -10,21 +10,19 @@ const profiles = {
 }
 const spots = [[-2.3,-1.7],[2,-1.7],[-2.3,1.6],[2,1.6]]
 export const WORKLOAD_SHADES = [
-  '#eef0ee',
-  '#edf4e9', '#dfeedd', '#d0e5cf', '#bbd8bd',
-  '#f8f1d9', '#f5e3c8', '#efd2b3', '#e8bf9b',
-  '#f2d7d4', '#edc9c6', '#e8bbb8', '#e2aaa8', '#dc9998', '#d98d8d',
+  '#f4f6f4', '#edf3ed', '#e5efe4', '#ddebdc', '#d4e6d4',
+  '#eeddb5', '#ebd29f', '#e7bf85', '#e3ae77',
+  '#e7a598', '#df968b', '#d88780', '#cf7874',
 ]
 export const LEAVE_SHADE = '#e9e8ee'
+export const LEAVE_PATTERN = 'repeating-linear-gradient(135deg,#e9e8ee 0 7px,#dcdbe4 7px 9px)'
 
 export function cellShade(summary) {
   if (summary.onLeave) return summary.work ? WORKLOAD_SHADES[9] : LEAVE_SHADE
   const { total } = summary
   const step = total > 7 && total < 8 ? 7 : Math.ceil(total)
-  return WORKLOAD_SHADES[step] ?? 'hsl(2 47% ' + (60 + 10 * Math.exp(-(step - 14) / 7)) + '%)'
+  return WORKLOAD_SHADES[Math.min(12, step)]
 }
-
-
 
 function paintOffice(ctx, width, height, angle, time, people, active, state) {
   const scale = Math.min(width / 13.8, height / 8.1)
@@ -157,7 +155,7 @@ export default function Studio({ state, onDay, openChannels, openDigest, isManag
       <div className="studio-roster">{people.map(u=><button key={u.id} className="btn ghost" aria-pressed={person.id===u.id} onClick={()=>select(u.id)}><i style={{background:profiles[u.id].color}}/>{u.name}</button>)}</div>
       <div className="studio-heat">{weekDates(startOfWeek(day)).slice(0,5).map(date=>{
         const workload=cell(state,person.id,date,'all')
-        return <button key={date} style={{background:cellShade(workload)}} onClick={()=>onDay(person,date)}><span>{format(date)}</span><strong>{workload.total}h</strong><small>{workload.label}</small></button>
+        return <button key={date} style={{background:workload.key==='leave'?LEAVE_PATTERN:cellShade(workload)}} onClick={()=>onDay(person,date)}><span>{format(date)}</span><strong>{workload.total}h</strong><small>{workload.label}</small></button>
       })}</div>
     </div><aside className="studio-profile">
       <small>{profile.team} · {profile.role}</small><h2>{person.name}</h2>
