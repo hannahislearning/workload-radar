@@ -22,14 +22,9 @@ Open http://localhost:5173. Requires Node 18+.
 
 1. Start as **Ms Aina (manager)** — the heatmap shows "planned work only" is
    calm; toggle **Planned + chat & email** (the default) to see reality.
-2. Switch to **Kumar (member)** → **Upload & review** → upload his 12 sample
-   messages. The AI flags an uncertain item, a vague date ("esok"), a possible
-   duplicate, and one wrong deadline ("next Friday" misread).
-3. On the review screen: fix the Tender docs deadline to 2026-12-04, delete the
-   uncertain invoice item and the duplicate note, confirm the vague dates, then
-   **Approve**. Nothing reaches the heatmap before approval.
-4. Kumar's Wednesday turns **Over (10h)** — the plan said 5h. The card flip
-   shows the tasks behind the box. A deadline-risk flag appears on at-risk tasks.
+2. Switch to **Kumar** and extract his 14 demo messages. Vendor report and Client demo call should be flagged as duplicates.
+3. Keep **Skip** on duplicates, delete the uncertain invoice, change Tender docs to 4 Dec 2026, and confirm dates for both vague items (choose 26 and 27 Nov to keep Wednesday unchanged). Approve the findings.
+4. Open Kumar’s **Wednesday, 25 Nov** map marker. It shows **10h Over**: Vendor report (3h), supplier price comparison (3h), audit queries (2h), and one Client demo call (2h) under Meetings. Planned workload is **5h**.
 5. As **Ms Aina**, flip Kumar's Wednesday, click **Move…** on a task. The app
    suggests the colleague with the most free hours (Mei Ling). Send the request.
 6. As **Mei Ling**: the banner shows the pending request; **Requests** →

@@ -51,7 +51,7 @@ export const SAMPLE_MESSAGES = [
     id: 'm1', source: 'whatsapp', from: 'Manager (Puan Lim)',
     text: 'Kumar, can you send the vendor report by Wed? It should take you about 3 hours.',
     result: [{ name: 'Vendor report (chat request)', hours: 3, deadline: '2026-11-25', confidence: 'high' }],
-    truth: { name: 'Vendor report (chat request)', hours: 3, deadline: '2026-11-25' },
+    truth: { duplicate: true },
   },
   {
     id: 'm2', source: 'email', from: 'Client (Siti, Apex Sdn Bhd)',
@@ -118,8 +118,8 @@ export const SAMPLE_MESSAGES = [
   {
     id: 'm12', source: 'whatsapp', from: 'Colleague (June)',
     text: 'Kumar, we are having a client demo call this Wednesday 2pm, please join. Roughly 2 hours including prep.',
-    result: [{ name: 'Client demo call (chat)', hours: 2, deadline: '2026-11-25', confidence: 'medium' }],
-    truth: { name: 'Client demo call (chat)', hours: 2, deadline: '2026-11-25' },
+    result: [{ name: 'Client demo call (chat)', hours: 2, deadline: '2026-11-25', isMeeting: true, confidence: 'medium' }],
+    truth: { duplicate: true },
   },
   {
     id: 'm13', source: 'email', from: 'Client (Siti, Apex Sdn Bhd)',
@@ -163,7 +163,7 @@ export const SAMPLE_MESSAGES = [
     text: 'The vendor report and tender docs both need the latest numbers from Kumar before Friday.',
     // Duplicate risk: mentions tasks already in the plan. Extractor matches and
     // returns an empty diff with a "possible duplicate" note instead of a new task.
-    result: [{ name: 'POSSIBLE_DUPLICATE: Vendor report / Tender docs already in the plan', duplicate: true }],
+    result: [{ name: 'Vendor report', hours: 3, deadline: '2026-11-25' }],
     truth: { duplicate: true },
   },
   {
@@ -172,12 +172,18 @@ export const SAMPLE_MESSAGES = [
     result: [{ name: 'Quarterly town hall (meeting)', hours: 1, deadline: '2026-12-01', confidence: 'high', isMeeting: true }],
     truth: { name: 'Quarterly town hall (meeting)', hours: 1, deadline: '2026-12-01', isMeeting: true },
   },
+  { id: 'm21', source: 'email', from: 'Procurement', text: 'Prepare the supplier price comparison by Wednesday. Estimate 3 hours.',
+    result: [{ name: 'Prepare supplier price comparison', hours: 3, deadline: '2026-11-25' }],
+    truth: { name: 'Prepare supplier price comparison', hours: 3, deadline: '2026-11-25' } },
+  { id: 'm22', source: 'whatsapp', from: 'Compliance', text: 'Reply to the audit queries by Wednesday. Allow 2 hours.',
+    result: [{ name: 'Reply to audit queries', hours: 2, deadline: '2026-11-25' }],
+    truth: { name: 'Reply to audit queries', hours: 2, deadline: '2026-11-25' } },
 ]
 
 // Per-person upload bundles for the demo: Kumar uploads his own messages,
 // Mei Ling and Hafiz upload theirs. Members only ever see their own bundle.
 export const MEMBER_UPLOADS = {
-  kumar: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm12', 'm13', 'm16', 'm19'],
+  kumar: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm12', 'm13', 'm16', 'm19', 'm21', 'm22'],
   meiling: ['m9', 'm10', 'm13', 'm15', 'm18'],
   hafiz: ['m11', 'm7', 'm16'],
   june: ['m14', 'm8', 'm6'],

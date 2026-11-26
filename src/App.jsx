@@ -1,13 +1,13 @@
-import React, { useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { SAMPLE_MESSAGES, MEMBER_UPLOADS, PLAN_TASKS, PLAN_MEETINGS } from './data/samples.js'
 import WorkloadMap from './WorkloadMap.jsx'
 import Studio, { WORKLOAD_SHADES, LEAVE_SHADE } from './Studio.jsx'
 import { DigestInbox, digestClock, useDigestDelivery } from './Digests.jsx'
-import { extractTasks } from './lib/extractor.js'
+import { extractTasks, reviewErrors } from './lib/extractor.js'
 import {
   useAppStore, todayISO, addDays, startOfWeek, weekDates, DAY_NAMES,
   cell, DAILY_LIMIT, taskRemaining, taskDay, deadlineRisk, transferCandidates,
-  dashboardStats, isStale, staleDays, STALE_DAYS, round1,
+  dashboardStats, isStale, staleDays, STALE_DAYS, round1, workloadWeekBounds,
 } from './lib/store.js'
 
 export default function App() {
@@ -101,7 +101,7 @@ function Banner({ state }) {
       }
     }
   }
-  const stale = state.users.filter((u) => u.role === 'member' && isStale(state, u.id) && (state.currentUserId === 'aina' || u.id === state.currentUserId))
+  const stale = state.users.filter((u) => u.role === 'member' && isStale(state, u.id) && (state.users.find(member => member.id === state.currentUserId)?.role === 'manager' || u.id === state.currentUserId))
   const myPending = state.moveRequests.filter((r) => r.state === 'pending' && r.toUserId === state.currentUserId)
   const items = []
   if (nextWeekOver.length) items.push(`⚠️ Next week is overloaded: ${[...new Set(nextWeekOver)].join(', ')}`)
@@ -119,7 +119,11 @@ function HeatmapTab({ state, update, me, initialDay }) {
   const [weekOffset, setWeekOffset] = useState(() => initialDay ? Math.round((Date.parse(startOfWeek(initialDay.date)) - Date.parse(startOfWeek(todayISO()))) / 604800000) : 0)
   const [selection, setSelection] = useState(initialDay)
   const monday = addDays(startOfWeek(todayISO()), weekOffset * 7)
-  const days = weekDates(monday).slice(0, 5)
+  const week = weekDates(monday)
+  const weekend = week.slice(5).some(date => state.tasks.some(task => task.status === 'approved' && [taskDay(task), task.deadline].includes(date)) ||
+    state.meetings.some(meeting => meeting.date === date))
+  const days = weekend ? week : week.slice(0, 5)
+  const { first, last } = workloadWeekBounds(state)
   const members = state.users.filter((u) => u.role === 'member')
   const isManager = me.role === 'manager'
 
@@ -143,9 +147,9 @@ function HeatmapTab({ state, update, me, initialDay }) {
           <button className={mode === 'planned' ? 'on' : ''} aria-pressed={mode === 'planned'} onClick={() => setMode('planned')}>Planned workload</button>
         </div>
         <div className="weeknav">
-          <button className="btn ghost" onClick={() => { setWeekOffset((w) => w - 1) }} disabled={weekOffset <= -1} aria-label="Previous week">‹</button>
-          <strong aria-live="polite">{shortDate(monday)} – {shortDate(days[4])}</strong>
-          <button className="btn ghost" onClick={() => { setWeekOffset((w) => w + 1) }} disabled={weekOffset >= 2} aria-label="Next week">›</button>
+          <button className="btn ghost" onClick={() => { setWeekOffset((w) => w - 1) }} disabled={weekOffset <= first} aria-label="Previous week">‹</button>
+          <strong aria-live="polite">{shortDate(monday)} – {shortDate(days.at(-1))}</strong>
+          <button className="btn ghost" onClick={() => { setWeekOffset((w) => w + 1) }} disabled={weekOffset >= last} aria-label="Next week">›</button>
         </div>
       </div>
 
@@ -362,11 +366,11 @@ function RiskFlag({ risk, deadline }) {
 function ResultsCards({ state, monday, compact }) {
   const stats = dashboardStats(state, monday)
   return <div className="stat-grid">
-    <div className="stat"><span className="big">{stats.hiddenPct}%</span><strong>Hidden workload</strong><span>{stats.hiddenHours}h of {stats.totalHours}h came from chats and emails</span></div>
+    <div className="stat"><span className="big">{stats.hiddenPct}%</span><strong>Hidden workload</strong><span>{stats.hiddenHours}h of {stats.totalHours}h remaining came from chats and emails</span></div>
     <div className="stat"><span className="big">{stats.overloadCaught}</span><strong>Overload days surfaced</strong><span>Person-days missed by the planned-only view</span></div>
     <div className="stat"><span className="big">{stats.atRisk}</span><strong>Deadlines at risk</strong><span>Open tasks across all dates</span></div>
     {!compact && <>
-      <div className="stat"><span className="big">{stats.onTime}</span><strong>Tasks completed</strong><span>Scheduled this week</span></div>
+      <div className="stat"><span className="big">{stats.completed}</span><strong>Tasks completed</strong><span>Scheduled this week</span></div>
       <div className="stat"><span className="big">{stats.accuracy === null ? '—' : stats.accuracy + '%'}</span><strong>Extraction accuracy</strong><span>On uploaded demo messages</span></div>
     </>}
   </div>
@@ -419,6 +423,12 @@ function HistoryTab({ state }) {
 function TodayTab({ state, update, me }) {
   const today = todayISO()
   const [editing, setEditing] = useState(null)
+  const [undo, setUndo] = useState(null)
+  useEffect(() => {
+    if (!undo) return
+    const timeout = setTimeout(() => setUndo(null), 5000)
+    return () => clearTimeout(timeout)
+  }, [undo])
   const tasks = state.tasks.filter((task) => task.owner === me.id && task.status === 'approved')
     .map((task) => ({ task, risk: deadlineRisk(state, task) }))
     .filter(({ task, risk }) => taskDay(task) === today || task.deadline === today || risk?.atRisk)
@@ -430,6 +440,8 @@ function TodayTab({ state, update, me }) {
   return <section className="today-board">
     <div className="section-heading"><h1>Task board</h1><p>Demo date {shortDate(today)} · Today’s work and deadlines needing attention · {capacity.available}h work capacity</p></div>
     <Banner state={state} />
+    <LegacyDates state={state} update={update} me={me} />
+    {undo && <div className="banner ok" role="status">Task marked done. <button className="btn tiny" onClick={() => { undo(); setUndo(null) }}>Undo</button></div>}
     {!tasks.length && <p className="empty">No tasks scheduled or due today, and no deadlines flagged.</p>}
     <ul className="todaylist">
       {tasks.map(({ task, risk }) => <li key={task.id} className={risk?.atRisk ? 'risky' : ''}>
@@ -440,7 +452,7 @@ function TodayTab({ state, update, me }) {
         </div>
         {taskRemaining(task) > 0 ? <div className="logbtns">
           <button className="btn" onClick={() => setEditing(task.id)}>Log your progress</button>
-          <button className="btn primary" onClick={() => logProgress(update, state, task, 100)}>Done</button>
+          <button className="btn primary" onClick={() => { const revert = logProgress(update, state, task, 100); setUndo(() => revert) }}>Done</button>
         </div> : <span className="muted">Completed</span>}
       </li>)}
     </ul>
@@ -464,19 +476,32 @@ function TodayTab({ state, update, me }) {
   </section>
 }
 
+function LegacyDates({ state, update, me }) {
+  const items = (state.needsConfirmation || []).filter(item => item.owner === me.id)
+  if (!items.length) return null
+  return <div className="inset"><h3>Needs a date</h3>{items.map(item => <form key={item.id} onSubmit={event => {
+    event.preventDefault()
+    const deadline = new FormData(event.currentTarget).get('deadline')
+    update(current => ({ ...current, needsConfirmation: current.needsConfirmation.filter(entry => entry.id !== item.id),
+      tasks: [...current.tasks, { ...item, id: crypto.randomUUID(), deadline, source: item.source || 'chat', status: 'approved', progress: 0 }] }))
+  }}><label>{item.name} <input type="date" name="deadline" required /></label> <button className="btn tiny">Confirm</button></form>)}</div>
+}
+
 function logProgress(update, state, task, percent) {
-  const me = state.users.find((u) => u.id === state.currentUserId)
-  update((s) => ({
+  const me = state.users.find(user => user.id === state.currentUserId)
+  const logId = crypto.randomUUID(), historyId = crypto.randomUUID()
+  const time = new Date(digestClock(state)).toISOString()
+  update(s => ({
     ...s,
-    tasks: s.tasks.map((t) => t.id === task.id ? { ...t, progress: percent } : t),
-    progressLogs: [...s.progressLogs, {
-      id: 'pl' + Date.now(), taskId: task.id, userId: s.currentUserId,
-      percent, taskName: task.name, at: new Date(digestClock(s)).toISOString(),
-    }],
-    history: [...s.history, {
-      id: 'h' + Date.now(), when: new Date().toISOString(), actor: me.name,
-      action: 'Logged progress', detail: `"${task.name}" → ${percent}%`,
-    }],
+    tasks: s.tasks.map(t => t.id === task.id ? { ...t, progress: percent } : t),
+    progressLogs: [...s.progressLogs, { id: logId, taskId: task.id, userId: me.id, percent, taskName: task.name, at: time }],
+    history: [...s.history, { id: historyId, when: time, actor: me.name, action: 'Logged progress', detail: task.name + ' → ' + percent + '%' }],
+  }))
+  return () => update(s => ({
+    ...s,
+    tasks: s.tasks.map(t => t.id === task.id && t.progress === percent ? { ...t, progress: task.progress || 0 } : t),
+    progressLogs: s.progressLogs.filter(log => log.id !== logId),
+    history: s.history.filter(entry => entry.id !== historyId),
   }))
 }
 
@@ -522,27 +547,31 @@ function UploadTab({ state, update, me, connected = false }) {
   async function run() {
     setPhase('working')
     setProgress({ done: 0, total: messages.length })
-    const res = await extractTasks(messages, fault, (done, total) => setProgress({ done, total }))
+    const res = await extractTasks(messages, fault, (done, total) => setProgress({ done, total }), state, me.id)
     // Privacy rule: raw text is processed and discarded — we only keep the
     // extracted fields below; msg.text never enters app state.
     setResults(res)
     setPhase('review')
   }
 
+  const retained = results.flatMap(result => result.finalTasks ?? result.tasks)
+  const errorsFor = retained.map(reviewErrors)
+  const needsDate = errorsFor.filter(error => error.deadline).length
+  const invalid = errorsFor.some(error => Object.keys(error).length)
+
   function approveAll() {
     const newTasks = []
     const newMeetings = []
-    const needsConfirm = []
+    if (invalid) return
     for (const r of results) {
       for (const t of r.finalTasks ?? r.tasks ?? []) {
-        if (t.needsDate || t.deadline === 'confirm' || t.deadline == null) {
-          needsConfirm.push({ id: 'nc' + Math.random(), messageId: r.messageId, name: t.name, hours: t.hours, owner: me.id })
-        } else if (t.isMeeting) {
-          newMeetings.push({ id: 'mtg-' + r.messageId + '-' + me.id, name: t.name, owner: me.id, date: t.deadline, hours: t.hours })
+        if (t.duplicate && !t.keepDuplicate) continue
+        if (t.isMeeting || t.duplicateOf?.kind === 'meeting') {
+          newMeetings.push({ id: crypto.randomUUID(), name: t.name.trim(), owner: me.id, date: t.deadline, hours: Number(t.hours) })
         } else {
           newTasks.push({
-            id: 'x' + Math.random().toString(36).slice(2), name: t.name, owner: me.id,
-            hours: t.hours, deadline: t.deadline, source: t.source || 'chat',
+            id: 'x' + Math.random().toString(36).slice(2), name: t.name.trim(), owner: me.id,
+            hours: Number(t.hours), deadline: t.deadline, source: t.source || 'chat',
             status: 'approved', progress: 0, confidence: t.confidence || 'low',
           })
         }
@@ -553,12 +582,11 @@ function UploadTab({ state, update, me, connected = false }) {
       ...s,
       tasks: [...s.tasks, ...newTasks],
       meetings: [...s.meetings, ...newMeetings.filter((meeting) => !s.meetings.some((existing) => existing.id === meeting.id))],
-      needsConfirmation: [...s.needsConfirmation, ...needsConfirm],
       uploads: { ...s.uploads, [me.id]: { messageIds: [...(s.uploads[me.id]?.messageIds || []), ...results.filter(r => !r.error || r.finalTasks?.length).map(r => r.messageId)], extracted: [...(s.uploads[me.id]?.extracted || []), ...results.map((r) => ({ messageId: r.messageId, tasks: r.tasks, finalTasks: r.finalTasks ?? r.tasks, error: r.error || null }))] } },
       history: [...s.history, {
         id: 'h' + Date.now(), when: new Date().toISOString(), actor: me.name,
         action: 'Approved extracted findings',
-        detail: `${newTasks.length} task(s) and ${newMeetings.length} meeting(s) added, ${needsConfirm.length} need date confirmation${errors.length ? `, ${errors.length} couldn't be read` : ''}`,
+        detail: `${newTasks.length} task(s) and ${newMeetings.length} meeting(s) added${errors.length ? `, ${errors.length} couldn't be read` : ''}`,
       }],
     }))
     setPhase('done')
@@ -594,36 +622,30 @@ function UploadTab({ state, update, me, connected = false }) {
                 }}>Add manually</button></span>}
               </div>
               {(r.finalTasks ?? r.tasks).length === 0 && !r.error && <p className="muted">No tasks found in this message.</p>}
-              {(r.finalTasks ?? r.tasks).map((t, i) => (
-                <div key={i} className={'found-task' + (t.confidence === 'low' ? ' uncertain' : '') + (t.needsDate ? ' vague' : '')}>
-                  {t.confidence === 'low' && <span className="flag">⚠️ uncertain — please confirm</span>}
-                  {t.needsDate && <span className="flag">📅 vague date — needs confirmation</span>}
-                  <label>Name <input value={t.name} onChange={(e) => {
-                    const arr = [...(r.finalTasks ?? r.tasks)]; arr[i] = { ...t, name: e.target.value }; setFinal(r.messageId, arr)
-                  }} /></label>
-                  <label>Hours <input type="number" step="0.5" min="0" value={t.hours} onChange={(e) => {
-                    const arr = [...(r.finalTasks ?? r.tasks)]; arr[i] = { ...t, hours: parseFloat(e.target.value) || 0 }; setFinal(r.messageId, arr)
-                  }} /></label>
-                  {!t.needsDate && (
-                    <label>Deadline <input type="date" value={t.deadline || ''} onChange={(e) => {
-                      const arr = [...(r.finalTasks ?? r.tasks)]; arr[i] = { ...t, deadline: e.target.value }; setFinal(r.messageId, arr)
-                    }} /></label>
-                  )}
-                  {t.needsDate && (
-                    <label>Confirm deadline <input type="date" onChange={(e) => {
-                      const arr = [...(r.finalTasks ?? r.tasks)]; arr[i] = { ...t, needsDate: false, deadline: e.target.value || null }; setFinal(r.messageId, arr)
-                    }} /></label>
-                  )}
-                  <button className="btn tiny danger" onClick={() => {
-                    setFinal(r.messageId, (r.finalTasks ?? r.tasks).filter((_, j) => j !== i))
-                  }}>Delete</button>
+              {(r.finalTasks ?? r.tasks).map((t, i) => {
+                const patch = (changes) => setFinal(r.messageId, (r.finalTasks ?? r.tasks).map((item, index) => index === i ? { ...item, ...changes } : item))
+                if (t.duplicate && !t.keepDuplicate) return <div className="inset" key={i}>
+                  <p>Looks like <strong>{t.duplicateOf?.name || t.name}</strong>, already in your {t.duplicateOf?.kind === 'meeting' ? 'calendar' : 'plan'}.</p>
+                  <button className="btn ghost" aria-pressed="true" onClick={() => patch({ keepDuplicate: false })}>Skip</button>
+                  <button className="btn" onClick={() => patch({ keepDuplicate: true })}>Add anyway</button>
                 </div>
-              ))}
+                const errors = reviewErrors(t)
+                return <div key={i} className={'found-task' + (t.confidence === 'low' ? ' uncertain' : '')}>
+                  <label>Name <input value={t.name} aria-invalid={!!errors.name} onChange={e => patch({ name: e.target.value })} />
+                    {errors.name && <small className="error">{errors.name}</small>}</label>
+                  <label>Hours <input type="number" step="0.5" min="0.5" max="24" value={t.hours} aria-invalid={!!errors.hours} onChange={e => patch({ hours: e.target.value })} />
+                    {errors.hours && <small className="error">{errors.hours}</small>}</label>
+                  <label>Deadline <input type="date" value={t.deadline || ''} aria-invalid={!!errors.deadline} onChange={e => patch({ deadline: e.target.value, needsDate: !e.target.value })} />
+                    {errors.deadline && <small className="error">{errors.deadline}</small>}</label>
+                  <button className="btn tiny danger" onClick={() => setFinal(r.messageId, (r.finalTasks ?? r.tasks).filter((_, j) => j !== i))}>Delete</button>
+                </div>
+              })}
             </div>
           )
         })}
         <div className="review-actions">
-          <button className="btn primary" onClick={approveAll}>Approve &amp; add to my workload</button>
+          {needsDate > 0 && <p role="status">{needsDate} {needsDate === 1 ? 'item needs' : 'items need'} a date before you can approve.</p>}
+          <button className="btn primary" disabled={invalid} onClick={approveAll}>Approve &amp; add to my workload</button>
           <button className="btn ghost" onClick={() => setPhase('idle')}>Cancel</button>
         </div>
       </section>

@@ -1,9 +1,10 @@
 
 import { useEffect } from 'react'
+import { DEMO_TODAY } from './data/samples.js'
 
 const WINDOW = 48 * 60 * 60 * 1000
-export function digestClock(state, real = Date.now()) {
-  return real + (state.digestOffset || 0)
+export function digestClock(state) {
+  return Date.parse(DEMO_TODAY + 'T09:00:00+08:00') + (state.digestOffset || 0)
 }
 
 export function collectDigests(state, now = digestClock(state)) {

@@ -230,8 +230,8 @@ export function transferCandidates(state, task) {
 export function dashboardStats(state, monday = startOfWeek(todayISO())) {
   const sunday = addDays(monday, 6)
   const tasks = state.tasks.filter((task) => task.status === 'approved' && taskDay(task) >= monday && taskDay(task) <= sunday)
-  const plannedHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? task.hours : 0), 0)
-  const hiddenHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? 0 : task.hours), 0)
+  const plannedHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? taskRemaining(task) : 0), 0)
+  const hiddenHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? 0 : taskRemaining(task)), 0)
   const totalHours = plannedHours + hiddenHours
   let overloadCaught = 0
   for (const iso of weekDates(monday)) {
@@ -242,7 +242,7 @@ export function dashboardStats(state, monday = startOfWeek(todayISO())) {
   return {
     hiddenPct: totalHours ? Math.round(100 * hiddenHours / totalHours) : 0,
     hiddenHours: round1(hiddenHours), totalHours: round1(totalHours), overloadCaught,
-    onTime: tasks.filter((task) => taskRemaining(task) === 0).length,
+    completed: tasks.filter((task) => taskRemaining(task) === 0).length,
     atRisk: state.tasks.filter((task) => isAtRisk(state, task)).length,
     accuracy: accuracyOf(state),
   }
@@ -299,4 +299,12 @@ export function isStale(state, userId) {
 
 export function hasAnyLog(state, userId) {
   return state.progressLogs.some((l) => l.userId === userId)
+}
+
+export function workloadWeekBounds(state) {
+  const anchor = startOfWeek(todayISO())
+  const dates = [todayISO(), ...state.tasks.flatMap(t => [t.deadline, taskDay(t)]), ...state.meetings.map(m => m.date)]
+    .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()
+  const offset = date => Math.round((Date.parse(startOfWeek(date)) - Date.parse(anchor)) / 604800000)
+  return { first: offset(dates[0]), last: offset(dates.at(-1)) }
 }
