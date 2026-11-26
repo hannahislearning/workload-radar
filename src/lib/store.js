@@ -35,27 +35,27 @@ export function initialState() {
   }
 }
 
-export function loadState() {
+export function loadState(storageKey = STORAGE_KEY, seed = initialState) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     const stored = raw ? JSON.parse(raw) : null
     if (stored?.version === STATE_VERSION) return stored
   } catch {
     // corrupted storage -> start fresh
   }
-  return initialState()
+  return seed()
 }
 
-export function useAppStore() {
-  const [state, setState] = useState(loadState)
+export function useAppStore(storageKey = STORAGE_KEY, seed = initialState) {
+  const [state, setState] = useState(() => loadState(storageKey, seed))
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    localStorage.setItem(storageKey, JSON.stringify(state))
+  }, [state, storageKey])
 
   const reset = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    setState(initialState())
-  }, [])
+    localStorage.removeItem(storageKey)
+    setState(seed())
+  }, [seed, storageKey])
 
   const update = useCallback((fn) => setState((s) => fn(s)), [])
 
@@ -237,7 +237,8 @@ export function transferPreview(state, task, recipient, date) {
 export function transferCandidates(state, task, date = taskDay(task)) {
   const skill = taskSkill(task)
   const remaining = round1(taskRemaining(task))
-  return state.users.filter((user) => user.role === 'member' && user.id !== task.owner).map((user) => {
+  return state.users.filter((user) => user.role === 'member' && user.id !== task.owner &&
+    (!state.transferRecipientIds || state.transferRecipientIds.includes(user.id))).map((user) => {
     const available = availableHours(state, user.id, date)
     const free = round1(Math.max(0, available - hoursFor(state, user.id, date, 'all')))
     const skillMatch = Boolean(skill && (user.skills || skillsByMember[user.id] || []).includes(skill))

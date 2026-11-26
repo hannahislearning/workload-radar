@@ -16,3 +16,22 @@ export function candidateDetail(candidate) {
     candidate.recentOverload + ' overload days in the prior week',
   ].filter(Boolean).join(' · ')
 }
+
+const workLabels = new Map([
+  ['Vendor report', 'Supplier report'],
+  ['Tender docs', 'Supplier quote paperwork'],
+  ['Tender brief', 'Prepare a supplier quote'],
+  ['Database migration', 'Move records to the new system'],
+  ['Sprint planning deck', 'Prepare slides for team planning'],
+  ['Vendor handover', 'Hand over supplier work'],
+  ['Supplier kickoff', 'First meeting with the supplier'],
+  ['Client demo call', 'Show the work to the client'],
+  ['Team standup', 'Team check-in'],
+  ['Delivery planning', 'Team planning meeting'],
+  ['Review contract amendments', 'Review changes to the contract'],
+  ['Check vendor invoice', 'Check the supplier invoice'],
+])
+
+export function workLabel(name) {
+  return workLabels.get(name) ?? name
+}

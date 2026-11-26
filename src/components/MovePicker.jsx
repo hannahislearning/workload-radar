@@ -1,5 +1,5 @@
 import { transferCandidates } from '../lib/store.js'
-import { shortDate, candidateDetail } from '../lib/format.js'
+import { shortDate, candidateDetail, workLabel } from '../lib/format.js'
 
 export default function MovePicker({ state, update, headingRef }) {
   const pick = state.movePicker
@@ -26,7 +26,7 @@ export default function MovePicker({ state, update, headingRef }) {
   }
   return (
     <div className="drawer-picker" aria-labelledby="transfer-picker-title">
-      <h4 id="transfer-picker-title" ref={headingRef} tabIndex={-1}>Move “{task.name}”</h4>
+      <h4 id="transfer-picker-title" ref={headingRef} tabIndex={-1}>Move “{workLabel(task.name)}”</h4>
       <p className="muted">Currently with {from.name}, due {shortDate(task.deadline)}.</p>
       <ul className="picker-list">
         {transferCandidates(state, task, pick.date).map((candidate) => (
