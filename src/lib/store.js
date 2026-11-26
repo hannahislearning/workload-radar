@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { USERS, PLAN_TASKS, PLAN_MEETINGS, LEAVE, DEMO_TODAY, SAMPLE_MESSAGES } from '../data/samples.js'
+import { USERS, PLAN_TASKS, APPROVED_DEMO_TASKS, PLAN_MEETINGS, LEAVE, DEMO_TODAY, SAMPLE_MESSAGES } from '../data/samples.js'
 
 const STORAGE_KEY = 'workload-radar-v1'
 
@@ -16,7 +16,7 @@ export function initialState() {
   return {
     users: USERS,
     currentUserId: 'aina',
-    tasks: PLAN_TASKS.map((t) => ({ ...t })),
+    tasks: [...PLAN_TASKS, ...APPROVED_DEMO_TASKS].map((t) => ({ ...t })),
     meetings: PLAN_MEETINGS.map((m) => ({ ...m })),
     leave: LEAVE.map((l) => ({ ...l })),
     moveRequests: [],
@@ -129,18 +129,23 @@ export function taskInMode(task, mode) {
 // Hours for one person on one date, for the given view mode.
 export function hoursFor(state, userId, iso, mode) {
   const work = state.tasks
-    .filter((t) => t.owner === userId && t.status === 'approved' && taskInMode(t, mode) && taskDay(t) === iso && !isOnLeave(state, userId, iso))
+    .filter((t) => t.owner === userId && t.status === 'approved' && taskInMode(t, mode) && taskDay(t) === iso)
     .reduce((sum, t) => sum + taskRemaining(t), 0)
   return round1(work)
 }
 
 // Status from total hours (work + meetings). Colour thresholds from the brief.
 export function statusFor(totalHours, onLeave) {
-  if (onLeave) return { key: 'leave', label: 'Leave', cls: 'status-leave' }
-  if (totalHours >= 9) return { key: 'over', label: 'Over', cls: 'status-over' }
+  if (onLeave && totalHours === 0) return { key: 'leave', label: 'Leave', cls: 'status-leave' }
+  if (onLeave || totalHours > DAILY_LIMIT) return { key: 'over', label: 'Over', cls: 'status-over' }
   if (totalHours >= 8) return { key: 'full', label: 'Full', cls: 'status-full' }
-  if (totalHours >= 5) return { key: 'busy', label: 'Busy', cls: 'status-busy' }
+  if (totalHours > 4) return { key: 'busy', label: 'Busy', cls: 'status-busy' }
   return { key: 'light', label: 'Light', cls: 'status-light' }
+}
+
+export function availableHours(state, userId, iso) {
+  if (isOnLeave(state, userId, iso)) return 0
+  return Math.max(0, DAILY_LIMIT - meetingHoursOn(state, userId, iso))
 }
 
 export function cell(state, userId, iso, mode) {
@@ -148,7 +153,7 @@ export function cell(state, userId, iso, mode) {
   const work = hoursFor(state, userId, iso, mode)
   const meetings = onLeave ? 0 : meetingHoursOn(state, userId, iso)
   const total = round1(work + meetings)
-  return { work, meetings, total, onLeave, ...statusFor(total, onLeave) }
+  return { work, meetings, total, onLeave, available: availableHours(state, userId, iso), ...statusFor(total, onLeave) }
 }
 
 export function round1(n) {
@@ -156,54 +161,91 @@ export function round1(n) {
 }
 
 // ---------- deadline risk ----------
-// A task is at risk when the hours it still needs exceed the hours the person
-// has free (limit minus other work minus meetings) on working days before the
-// deadline, counting from today.
-export function isAtRisk(state, task) {
-  if (task.status !== 'approved' || !task.deadline || task.deadline === 'confirm') return false
-  if ((task.progress || 0) >= 100) return false
-  const remaining = taskRemaining(task)
-  if (remaining <= 0) return false
+const workingDay = (iso) => ![0, 6].includes(new Date(iso + 'T12:00:00').getDay())
+
+export function deadlineRisk(state, task, today = todayISO()) {
+  if (task.status !== 'approved' || !/^\d{4}-\d{2}-\d{2}$/.test(task.deadline)) return null
+  const remaining = round1(taskRemaining(task))
+  if (remaining <= 0) return null
+  if (task.deadline < today) return { remaining, free: 0, overdue: true, atRisk: true }
+
   let free = 0
-  let cursor = todayISO()
-  while (cursor <= task.deadline) {
-    if (!isOnLeave(state, task.owner, cursor)) {
-      const already = hoursFor(state, task.owner, cursor, 'all')
-      const meetings = meetingHoursOn(state, task.owner, cursor)
-      free += Math.max(0, DAILY_LIMIT - already - meetings)
-    }
-    cursor = addDays(cursor, 1)
+  for (let date = today; date <= task.deadline; date = addDays(date, 1)) {
+    if (!workingDay(date)) continue
+    const reserved = hoursFor(state, task.owner, date, 'all')
+    const ownAllocation = taskDay(task) === date ? remaining : 0
+    free += Math.max(0, availableHours(state, task.owner, date) - (reserved - ownAllocation))
   }
-  // `already` on each day already includes this task's own remaining hours on
-  // its deadline day, so `free` is the true slack. If remaining > free, it
-  // cannot fit before the deadline even using its own day's slot.
-  return remaining > free
+  free = round1(free)
+  return { remaining, free, overdue: false, atRisk: remaining > free }
 }
 
-// ---------- dashboard numbers ----------
-export function dashboardStats(state) {
-  const memberTasks = state.tasks.filter((t) => t.source !== 'plan' && t.status === 'approved')
-  const approvedFromMessages = memberTasks.length
-  const allApproved = state.tasks.filter((t) => t.status === 'approved').length
-  const hiddenPct = allApproved === 0 ? 0 : Math.round((approvedFromMessages / allApproved) * 100)
+export function isAtRisk(state, task) {
+  return deadlineRisk(state, task)?.atRisk ?? false
+}
 
-  // overload days caught: days where planned-only says OK but all-sources says Over
+const skillsByMember = {
+  kumar: ['vendor', 'reporting', 'compliance'],
+  meiling: ['web', 'vendor', 'design'],
+  hafiz: ['database', 'engineering', 'operations'],
+  june: ['planning', 'reporting', 'client'],
+}
+
+function taskSkill(task) {
+  if (task.skill) return task.skill
+  const name = task.name.toLowerCase()
+  if (/vendor|tender|invoice/.test(name)) return 'vendor'
+  if (/database|migration/.test(name)) return 'database'
+  if (/website|web|frontend/.test(name)) return 'web'
+  if (/sprint|planning/.test(name)) return 'planning'
+  if (/report|deck/.test(name)) return 'reporting'
+  if (/contract|audit|compliance/.test(name)) return 'compliance'
+  return null
+}
+
+export function transferCandidates(state, task) {
+  const date = taskDay(task)
+  const skill = taskSkill(task)
+  const remaining = round1(taskRemaining(task))
+  return state.users.filter((user) => user.role === 'member' && user.id !== task.owner).map((user) => {
+    const available = availableHours(state, user.id, date)
+    const free = round1(Math.max(0, available - hoursFor(state, user.id, date, 'all')))
+    const skillMatch = Boolean(skill && (user.skills || skillsByMember[user.id] || []).includes(skill))
+    const experience = skill ? state.tasks.filter((other) => other.owner === user.id && other.id !== task.id &&
+      other.status === 'approved' && taskSkill(other) === skill &&
+      (taskRemaining(other) === 0 || taskDay(other) < todayISO())).length : 0
+    let recentOverload = 0
+    for (let offset = 1; offset <= 7; offset++) {
+      const prior = addDays(date, -offset)
+      if (workingDay(prior) && cell(state, user.id, prior, 'all').key === 'over') recentOverload++
+    }
+    return { user, free, skill, skillMatch, experience, recentOverload,
+      fits: remaining > 0 && workingDay(date) && free >= remaining }
+  }).sort((a, b) => Number(b.fits) - Number(a.fits) ||
+    Number(b.skillMatch) - Number(a.skillMatch) ||
+    (Math.min(b.experience, 3) - b.recentOverload) - (Math.min(a.experience, 3) - a.recentOverload) ||
+    a.recentOverload - b.recentOverload || b.free - a.free)
+}
+
+export function dashboardStats(state, monday = startOfWeek(todayISO())) {
+  const sunday = addDays(monday, 6)
+  const tasks = state.tasks.filter((task) => task.status === 'approved' && taskDay(task) >= monday && taskDay(task) <= sunday)
+  const plannedHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? task.hours : 0), 0)
+  const hiddenHours = tasks.reduce((sum, task) => sum + (task.source === 'plan' ? 0 : task.hours), 0)
+  const totalHours = plannedHours + hiddenHours
   let overloadCaught = 0
-  for (let w = 0; w < 3; w++) {
-    for (let d = 0; d < 7; d++) {
-      const iso = addDays(startOfWeek(todayISO()), w * 7 + d)
-      for (const u of state.users.filter((u) => u.role === 'member')) {
-        const planned = cell(state, u.id, iso, 'planned').total
-        const real = cell(state, u.id, iso, 'all').total
-        if (planned <= DAILY_LIMIT && real >= 9) overloadCaught++
-      }
+  for (const iso of weekDates(monday)) {
+    for (const user of state.users.filter((u) => u.role === 'member')) {
+      if (cell(state, user.id, iso, 'planned').key !== 'over' && cell(state, user.id, iso, 'all').key === 'over') overloadCaught++
     }
   }
-
-  const onTime = state.tasks.filter((t) => t.status === 'approved' && (t.progress || 0) >= 100).length
-  const atRisk = state.tasks.filter((t) => isAtRisk(state, t)).length
-
-  return { hiddenPct, overloadCaught, onTime, atRisk, accuracy: accuracyOf(state) }
+  return {
+    hiddenPct: totalHours ? Math.round(100 * hiddenHours / totalHours) : 0,
+    hiddenHours: round1(hiddenHours), totalHours: round1(totalHours), overloadCaught,
+    onTime: tasks.filter((task) => taskRemaining(task) === 0).length,
+    atRisk: state.tasks.filter((task) => isAtRisk(state, task)).length,
+    accuracy: accuracyOf(state),
+  }
 }
 
 // Accuracy check: grades the AI's RAW extraction (before member edits) against

@@ -19,7 +19,7 @@ export const DEMO_TODAY = '2026-11-23' // Monday
 export const PLAN_TASKS = [
   { id: 'plan-1', name: 'Vendor report', owner: 'kumar', hours: 3, deadline: '2026-11-25', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
   { id: 'plan-2', name: 'Tender docs', owner: 'kumar', hours: 2, deadline: '2026-11-27', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
-  { id: 'plan-3', name: 'Client website fixes', owner: 'meiling', hours: 4, deadline: '2026-11-26', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
+  { id: 'plan-3', name: 'Client website fixes', owner: 'meiling', hours: 4, scheduledDate: '2026-11-25', deadline: '2026-11-26', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
   { id: 'plan-4', name: 'Database migration', owner: 'hafiz', hours: 5, deadline: '2026-11-27', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
   { id: 'plan-5', name: 'Sprint planning deck', owner: 'june', hours: 2, deadline: '2026-11-26', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
   // due TODAY so the demo can exercise progress logging on the Today tab
@@ -27,7 +27,13 @@ export const PLAN_TASKS = [
   { id: 'plan-7', name: 'Inventory checklist', owner: 'hafiz', hours: 1, deadline: '2026-11-23', source: 'plan', status: 'approved', progress: 0, confidence: 'high' },
 ]
 
+export const APPROVED_DEMO_TASKS = [
+  { id: 'demo-tender', name: 'Tender brief', owner: 'kumar', hours: 6, deadline: DEMO_TODAY, source: 'email', status: 'approved', progress: 0, skill: 'vendor' },
+  { id: 'demo-vendor', name: 'Vendor handover', owner: 'meiling', hours: 2, deadline: '2026-11-20', source: 'plan', status: 'approved', progress: 100, skill: 'vendor' },
+]
+
 export const PLAN_MEETINGS = [
+  { id: 'mtg-kickoff', name: 'Supplier kickoff', owner: 'kumar', date: DEMO_TODAY, hours: 2 },
   { id: 'mtg-1', name: 'Client demo call', owner: 'kumar', date: '2026-11-25', hours: 2 },
   { id: 'mtg-2', name: 'Team standup', owner: 'everyone', date: '2026-11-24', hours: 1 },
 ]
