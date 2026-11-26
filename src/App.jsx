@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
 import { SAMPLE_MESSAGES, MEMBER_UPLOADS, PLAN_TASKS, PLAN_MEETINGS } from './data/samples.js'
-import Studio, { cellShade, WORKLOAD_SHADES, LEAVE_SHADE } from './Studio.jsx'
+import WorkloadMap from './WorkloadMap.jsx'
+import Studio, { WORKLOAD_SHADES, LEAVE_SHADE } from './Studio.jsx'
 import { DigestInbox, digestClock, useDigestDelivery } from './Digests.jsx'
 import { extractTasks } from './lib/extractor.js'
 import {
@@ -122,9 +123,19 @@ function HeatmapTab({ state, update, me, initialDay }) {
   const members = state.users.filter((u) => u.role === 'member')
   const isManager = me.role === 'manager'
 
+  const [day, setDay] = useState(initialDay?.date ?? null)
+  const hottestDay = days.reduce((best, candidate) => {
+    const load = (date) => members.reduce((score, user) => {
+      const summary = cell(state, user.id, date, mode)
+      return score + (summary.key === 'over' ? 100 : 0) + summary.total
+    }, 0)
+    return load(candidate) > load(best) ? candidate : best
+  }, days[0])
+  const visibleDay = days.includes(day) ? day : hottestDay
+
   return (
     <section className="heatmap-panel">
-      <div className="section-heading radar-heading"><h1>Team workload</h1><p>Scheduled work, meetings, and leave across the department.</p></div>
+      <div className="section-heading radar-heading"><h1>Team workload</h1><p>Select a teammate on the map to see their work, meetings, and leave.</p></div>
       <div className="calendar-surface">
       <div className="toolbar">
         <div className="toggle" role="group" aria-label="Workload view">
@@ -138,43 +149,12 @@ function HeatmapTab({ state, update, me, initialDay }) {
         </div>
       </div>
 
-      <div className="heatmap-scroll" tabIndex={0} aria-label="Team workload heatmap">
-        <table className="heatmap">
-          <thead>
-            <tr>
-              <th scope="col">Teammate</th>
-              {days.map((iso) => (
-                <th key={iso} scope="col" className={iso === todayISO() ? 'today' : ''}>
-                  <strong>{shortDate(iso)}</strong><br /><span className="date">{DAY_NAMES[(new Date(iso + 'T12:00:00').getDay() + 6) % 7]}</span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((u) => (
-              <tr key={u.id}>
-                <th scope="row"><span className="calendar-person"><span className="member-avatar" aria-hidden="true">{initials(u.name)}</span>{u.name}</span></th>
-                {days.map((iso) => {
-                  const summary = cell(state, u.id, iso, mode)
-                  const pending = state.moveRequests.some((request) =>
-                    request.state === 'pending' && [request.fromUserId, request.toUserId].includes(u.id) &&
-                    state.tasks.some((task) => task.id === request.taskId && taskDay(task) === iso))
-                  const hours = summary.onLeave && !summary.work ? '—' : summary.total + 'h'
-                  return <td key={iso} style={{ '--cell-shade': cellShade(summary) }}>
-                    <button type="button" className={'heat-card' + (pending ? ' pending' : '')}
-                      aria-haspopup="dialog"
-                      aria-label={u.name + ', ' + shortDate(iso) + ': ' + summary.label + ', ' + hours + '. Show day details'}
-                      onClick={() => setSelection({ user: u, date: iso })}>
-                      <strong>{hours}</strong><span>{summary.label}</span>
-                      {(summary.meetings > 0 || summary.onLeave) && <span className="capacity-label">{summary.available}h work capacity</span>}
-                    </button>
-                  </td>
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="map-date-tabs" role="group" aria-label="Choose a workload day">
+        {days.map((date,i)=><button type="button" key={date} aria-pressed={date===visibleDay} onClick={()=>setDay(date)}>
+          <span>{DAY_NAMES[i]}</span><strong>{shortDate(date)}</strong>
+        </button>)}
       </div>
+      <WorkloadMap state={state} members={members} date={visibleDay} mode={mode} onSelect={setSelection} />
 
       <HeatmapLegend />
       </div>
